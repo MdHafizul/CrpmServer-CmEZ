@@ -9,7 +9,7 @@ export default function GenerateReportButton({ filter, setFilter, type , selecte
         if (type === "govsorter") {
             generateGovSorterReport(filter, setFilter);
         }
-        if (type === "statusLPC") {
+        else if (type === "statusLPC") {
             generateStatusLPCReport();
         }
         else {

@@ -28,6 +28,11 @@ exports.uploadFile = async (req, res) => {
         // Store the result and selected date in cache
         cache.set('status21Data', { ...result, selectedDate: uploadDate.toISOString() });
 
+        // Get the first sheet name dynamically
+        const sheetNames = Object.keys(result);
+        const firstSheetName = sheetNames[0];
+        const data = result[firstSheetName];
+        
         // Clear any previously cached results when new data is uploaded
         cache.del('disconnected_results');
         cache.del('revisit_results');
@@ -36,7 +41,7 @@ exports.uploadFile = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: 'File uploaded and processed successfully',
-            data: result
+            data: data,
         });
     } catch (error) {
         return res.status(500).json({

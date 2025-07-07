@@ -19,14 +19,6 @@ export default function SortedTable() {
         async function fetchSortedData() {
             setIsLoading(true);
 
-            // Check cache first
-            if (sortedTableCache[filter]) {
-                setData(sortedTableCache[filter].data);
-                setTotalRow(sortedTableCache[filter].totalRow);
-                setIsLoading(false);
-                return;
-            }
-
             try {
                 const response = await apiFetch("/api/v2/statusLPC/sortedTable", {
                     method: "POST",
