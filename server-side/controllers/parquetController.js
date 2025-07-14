@@ -9,20 +9,20 @@ const { convertBigIntsInObject } = require('../utils/parquetHelper');
 exports.uploadAndProcess = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'No file uploaded' 
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded'
       });
     }
 
     console.log(`Processing uploaded file: ${req.file.originalname}`);
-    
+
     // Process the Excel file: convert to parquet and count active rows
     const result = await parquetServices.convertExcelToParquet(req.file.path);
 
     // Convert any BigInt values to Numbers
     const convertedResult = convertBigIntsInObject(result);
-    
+
     res.json({
       success: true,
       message: 'File processed successfully',
@@ -40,97 +40,69 @@ exports.uploadAndProcess = async (req, res) => {
   }
 };
 
-// @DESC : Count all rows from a Parquet file
-// @route GET /api/v2/parquet/count-all/:filename
-// @access Public
-exports.countAllFromParquet =  async (req, res) => {
-  try{
-    const { filename } = req.params;
-    const count = await parquetServices.countAllFromParquetFile(filename);
-    res.json({
-      success: true,
-      filename,
-      count: convertBigIntsInObject(count)
-    });
-  } catch (error) {
-    console.error('Count error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-}
 
-// @DESC : Count active rows from a Parquet file
-// @route GET /api/v2/parquet/count-active/:filename
+/*
+@TITLE : Three Function for Summary Cards
+@DESC : Function to calculate and return Total Aged Debt By Acc Status/ Trade Receivable / By Balance Type 
+@access : Public
+@route : GET /api/v2/crpm/summary-card/:filename
+
+*/
+
+// @DESC : Get total aged debt by account status
+// @route GET /api/v2/crpm/summary-card/:filename
 // @access Public
-exports.countActiveFromParquet = async (req, res) => {
+exports.getTotalAgedDebtByAccStatus = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    const { columnName = 'Acc Status', targetValue = 'Active' } = req.query;
-    
-    console.log(`Counting active rows from: ${filename}`);
+    if (!filename) {
+      return res.status(400).json({
+        success: false,
+        error: 'Filename is required'
+      });
+    }
 
-    const activeCount = await parquetServices.countActiveFromParquetFile(
-      filename,
-      columnName,
-      targetValue
-    );
-    
+    const resultAccStat = await parquetServices.getTotalAgedDebtByAccStatus(filename);
+    const resultTR = await parquetServices.getTotalTradeReceivable(filename);
+    const resultBalanceType = await parquetServices.getTotalByBalanceType(filename);
+
+    const data = {
+      ...resultAccStat,
+      ...resultTR,
+      ...resultBalanceType
+    };
+    const convertedData = convertBigIntsInObject(data);
+
     res.json({
       success: true,
       filename,
-      columnName,
-      targetValue,
-      activeCount: convertBigIntsInObject(activeCount)
+      data: convertedData
     });
-  } catch (error) {
-    console.error('Count error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+  } catch (err) {
+    next(err); // Use centralized error handler (see errorHandler.js)
   }
 };
 
 // @DESC : Process debt by station data
-// @route POST /api/v2/parquet/debt-by-station
+// @route GET /api/v2/parquet/debt-by-station
 // @access Public
-exports.processDebtByStationData = async (req, res)=> {
+exports.getAgedDebtByStationData = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    if (!filename) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Filename is required' 
-      });
+    const {  station, viewType = 'agedDebt' } = req.body;
+
+    let data;
+    if (viewType === 'TR') {
+      data = await parquetServices.processDebtByStationTR(filename, station);
+    } else {
+      data = await parquetServices.processDebtByStationAgedDebt(filename, station);
     }
 
-    console.log(`Processing debt by station data for file: ${filename}`);
-
-    let { station } = req.body;
-    if (!station) {
-      station = ""; // Default to empty string if not provided
-    }
-
-    const result = await parquetServices.processDebtByStation(filename, station);
-
-    // Convert any BigInt values to Numbers
-    const convertedResult = convertBigIntsInObject(result);
-    
-    res.json({
-      success: true,
-      message: 'Debt by station data processed successfully',
-      data: convertedResult
-    });
-  } catch (error) {
-    console.error('Processing error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.json({ success: true, filename, data });
+  } catch (err) {
+    next(err);
   }
-}
+};
 
 // @DESC : Get all data from a Parquet file
 // @route GET /api/v2/parquet/all-data/:filename
@@ -139,17 +111,17 @@ exports.getAllDataFromParquet = async (req, res) => {
   try {
     const { filename } = req.params;
     const { cursor, limit, sortField, sortDirection } = req.query;
-    
+
     const data = await parquetServices.getAllDataFromParquet(filename, {
       cursor,
       limit: limit ? parseInt(limit) : undefined,
       sortField,
       sortDirection
     });
-    
+
     // Convert BigInt values before sending response
     const convertedData = convertBigIntsInObject(data);
-    
+
     res.json({
       success: true,
       filename,

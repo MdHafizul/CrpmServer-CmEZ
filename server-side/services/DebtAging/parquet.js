@@ -73,58 +73,258 @@ exports.convertExcelToParquet = async (excelPath) => {
   return parquetPath;
 };
 
-// Function to count all rows from parquet file
-exports.countAllFromParquetFile = async (parquetFilename) => {
-  await initializeDuckDB();
-  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  const query = `SELECT COUNT(*) AS count FROM read_parquet('${normalizedPath}')`;
-  const result = await dbAll(query);
-  return result[0].count;
-};
+/*
+@TITLE : Three Function for Summary Cards
+@DESC : Function to calculate and return Total Aged Debt By Acc Status/ Trade Receivable / By Balance Type 
+@access : Public
+@route : GET /api/v2/crpm/summary-card/:filename
 
-// Function to count active rows from parquet file
-exports.countActiveFromParquetFile = async (parquetFilename, columnName = 'Acc Status', targetValue = 'Active') => {
+*/
+
+//Function to calculate and return Total Aged Debt By Acc Status Card
+exports.getTotalAgedDebtByAccStatus = async (parquetFilename) => {
   await initializeDuckDB();
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  const query = `
-    SELECT COUNT(*) AS count 
-    FROM read_parquet('${normalizedPath}') 
-    WHERE "${columnName}" = '${targetValue}'
+
+  const statusQuery = `
+    SELECT
+      "Acc Status",
+      COUNT(*) AS "No Of Account",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "Debt"
+    FROM read_parquet('${normalizedPath}')
+    GROUP BY "Acc Status"
   `;
-  const result = await dbAll(query);
-  return result[0].count;
+
+  const totalQuery = `
+    SELECT
+      COUNT(*) AS "No Of Account",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+  `;
+
+  const byStatus = await dbAll(statusQuery);
+  const total = await dbAll(totalQuery);
+
+  // Convert BigInt to Number
+  const totalAccounts = Number(total[0]["No Of Account"]);
+  const totalOutstanding = Number(total[0]["TTL O/S Amt"]);
+
+  const result = {
+    TotalAccStatus: {
+      "TTL O/S Amt": totalOutstanding,
+      "No Of Acc": totalAccounts
+    }
+  };
+
+  byStatus.forEach(row => {
+    const noOfAcc = Number(row["No Of Account"]);
+    const debt = Number(row["Debt"]);
+    result[row["Acc Status"]] = {
+      "TTL O/S Amt": debt,
+      "No Of Acc": noOfAcc,
+      "% Of Total": totalAccounts > 0
+        ? ((noOfAcc / totalAccounts) * 100).toFixed(2)
+        : "0.00"
+    };
+  });
+
+  return result;
 };
 
-// Function to process debt by station (all or specific)
-exports.processDebtByStation = async (parquetFilename, station = null) => {
+// Function to calculate and return Total Trade Receivable
+exports.getTotalTradeReceivable = async (parquetFilename) => {
   await initializeDuckDB();
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  let query;
-  if (station && station !== '') {
-    // Specific station
-    query = `
-      SELECT 
-        CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-        COUNT(*) AS "No Of Account",
-        SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "Debt"
-      FROM read_parquet('${normalizedPath}')
-      WHERE "Buss Area" = '${station}'
-      GROUP BY "Buss Area"
-    `;
-  } else {
-    // All stations
-    query = `
-      SELECT 
-        CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-        COUNT(*) AS "No Of Account",
-        SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "Debt"
-      FROM read_parquet('${normalizedPath}')
-      GROUP BY "Buss Area"
-      ORDER BY "Buss Area"
-    `;
-  }
+
+  // Query for all required fields and counts, plus unique account count
+  const query = `
+    SELECT
+      COUNT(DISTINCT "Contract Acc") AS "TotalNoOfAccTR",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TotalOutstanding",
+      COUNT(*) FILTER (WHERE CAST("TTL O/S Amt" AS DOUBLE) <> 0) AS "NumOfAccOutstanding",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "TotalUndue",
+      COUNT(*) FILTER (WHERE CAST("Total Undue" AS DOUBLE) <> 0) AS "NumOfAccUndue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "CurrentMonthUnpaid",
+      COUNT(*) FILTER (WHERE CAST("Cur.MthUnpaid" AS DOUBLE) <> 0) AS "NumOfAccCurMthUnpaid"
+    FROM read_parquet('${normalizedPath}')
+  `;
+
   const result = await dbAll(query);
-  return mapBusinessAreas(result);
+  const row = result[0];
+
+  const totalOutstanding = Number(row.TotalOutstanding) || 0;
+  const numOfAccOutstanding = Number(row.NumOfAccOutstanding) || 0;
+  const totalUndue = Number(row.TotalUndue) || 0;
+  const numOfAccUndue = Number(row.NumOfAccUndue) || 0;
+  const currentMonthUnpaid = Number(row.CurrentMonthUnpaid) || 0;
+  const numOfAccCurMthUnpaid = Number(row.NumOfAccCurMthUnpaid) || 0;
+  const totalNoOfAccTR = Number(row.TotalTRNoOfAcc) || 0;
+
+  const totalCurrentMonth = totalUndue + currentMonthUnpaid;
+  const totalTradeReceivable = totalOutstanding + totalCurrentMonth;
+
+  return {
+    TotalTradeReceivable: totalTradeReceivable,
+    TotalNoOfAccTR: totalNoOfAccTR,
+    TotalOutstanding: {
+      Amount: totalOutstanding,
+      NumOfAcc: numOfAccOutstanding
+    },
+    TotalCurrentMonth: {
+      Amount: totalCurrentMonth,
+      NumOfAcc: numOfAccUndue + numOfAccCurMthUnpaid,
+      TotalUndue: {
+        Amount: totalUndue,
+        NumOfAcc: numOfAccUndue
+      },
+      CurrentMonthUnpaid: {
+        Amount: currentMonthUnpaid,
+        NumOfAcc: numOfAccCurMthUnpaid
+      }
+    }
+  };
+}
+
+// Function to get total aged debt by balance type
+exports.getTotalByBalanceType = async (parquetFilename) => {
+  await initializeDuckDB();
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+
+  // Query for all balance types and MIT
+  const query = `
+    SELECT
+      -- Positive Balance
+      SUM(CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) > 0.00 THEN CAST("TTL O/S Amt" AS DOUBLE) ELSE 0 END) AS "PositiveBalance",
+      COUNT(DISTINCT CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) > 0.00 THEN "Contract Acc" ELSE NULL END) AS "TotalNoOfAccPositiveBalance",
+
+      -- Negative Balance
+      SUM(CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) < 0 THEN CAST("TTL O/S Amt" AS DOUBLE) ELSE 0 END) AS "NegativeBalance",
+      COUNT(DISTINCT CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) < 0 THEN "Contract Acc" ELSE NULL END) AS "TotalNoOfAccNegativeBalance",
+
+      -- Zero Balance
+      SUM(CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) = 0 THEN CAST("TTL O/S Amt" AS DOUBLE) ELSE 0 END) AS "ZeroBalance",
+      COUNT(DISTINCT CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) = 0 THEN "Contract Acc" ELSE NULL END) AS "TotalNoOfAccZeroBalance",
+
+      -- MIT
+      SUM(CASE WHEN CAST("MIT Amt" AS DOUBLE) <> 0 THEN CAST("MIT Amt" AS DOUBLE) ELSE 0 END) AS "MIT",
+      COUNT(DISTINCT CASE WHEN CAST("MIT Amt" AS DOUBLE) <> 0 THEN "Contract Acc" ELSE NULL END) AS "TotalNoOfAccMIT",
+    FROM read_parquet('${normalizedPath}')
+  `;
+
+  const result = await dbAll(query);
+  const row = result[0];
+
+  return {
+    TotalByBalanceType: {
+      TotalAgedDebtByBalanceType: Number(row.PositiveBalance + row.NegativeBalance + row.ZeroBalance) || 0,
+      TotalNoOfAccByBalanceType: Number(row.TotalNoOfAccPositiveBalance + row.TotalNoOfAccNegativeBalance + row.TotalNoOfAccZeroBalance) || 0,
+      PositiveBalance: Number(row.PositiveBalance) || 0,
+      TotalNoOfAccPositiveBalance: Number(row.TotalNoOfAccPositiveBalance) || 0,
+      NegativeBalance: Number(row.NegativeBalance) || 0,
+      TotalNoOfAccNegativeBalance: Number(row.TotalNoOfAccNegativeBalance) || 0,
+      ZeroBalance: Number(row.ZeroBalance) || 0,
+      TotalNoOfAccZeroBalance: Number(row.TotalNoOfAccZeroBalance) || 0,
+      MIT: Number(row.MIT) || 0,
+      TotalNoOfAccMIT: Number(row.TotalNoOfAccMIT) || 0
+    }
+  };
+}
+
+// Trade Receivable view
+exports.processDebtByStationTR = async (parquetFilename, station = null) => {
+  await initializeDuckDB();
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  let query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+  `;
+  if (station) {
+    query += ` WHERE "Buss Area" = '${station}'`;
+  }
+  query += ` GROUP BY "Buss Area" ORDER BY "Buss Area"`;
+
+  const result = await dbAll(query);
+  // Map to your desired structure here
+  return mapBusinessAreasTR(result);
+};
+
+// Aged Debt view
+// Helper to get business area name
+function getBusinessAreaName(code) {
+  const area = businessAreas.find(b => b.code === String(code));
+  return area ? area.name : "Unknown";
+}
+
+// Trade Receivable view
+exports.processDebtByStationTR = async (parquetFilename, station = null) => {
+  await initializeDuckDB();
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  let query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+  `;
+  if (station) {
+    query += ` WHERE "Buss Area" = '${station}'`;
+  }
+  query += ` GROUP BY "Buss Area" ORDER BY "Buss Area"`;
+
+  const result = await dbAll(query);
+
+  // Calculate total accounts for % of Total
+  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
+
+  return result.map(row => ({
+    businessArea: String(row["Buss Area"]),
+    station: getBusinessAreaName(row["Buss Area"]),
+    numberOfAccounts: Number(row["Number of Accounts"]) || 0,
+    totalUndue: Number(row["Total Undue"]) || 0,
+    curMthUnpaid: Number(row["Cur.Mth Unpaid"]) || 0,
+    ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
+    percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00",
+    totalUnpaid: Number(row["Total Unpaid"]) || 0
+  }));
+};
+
+// Aged Debt view
+exports.processDebtByStationAgedDebt = async (parquetFilename, station = null) => {
+  await initializeDuckDB();
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  let query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+  `;
+  if (station) {
+    query += ` WHERE "Buss Area" = '${station}'`;
+  }
+  query += ` GROUP BY "Buss Area" ORDER BY "Buss Area"`;
+
+  const result = await dbAll(query);
+
+  // Calculate total accounts for % of Total
+  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
+
+  return result.map(row => ({
+    businessArea: String(row["Buss Area"]),
+    station: getBusinessAreaName(row["Buss Area"]),
+    numberOfAccounts: Number(row["Number of Accounts"]) || 0,
+    ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
+    percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00"
+  }));
 };
 
 //Function to return all data

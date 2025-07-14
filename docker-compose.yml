@@ -1,6 +1,6 @@
 services:
   backend:
-    image: hapejoy/status21-server:v3.1
+    image: hapejoy/crpm-server:latest
     ports:
       - "3000:3000"
     environment:
@@ -10,7 +10,7 @@ services:
     restart: always
 
   frontend:
-    image: hapejoy/status21-client:v3.1
+    image: hapejoy/cmez-client:latest
     # Remove or comment out the ports section below if you only want access via Nginx
     # ports:
     #   - "8080:8080"
@@ -24,11 +24,9 @@ services:
     restart: always
 
   nginx:
-    image: nginx:alpine
+    image: hapejoy/cmez-nginx:latest
     ports:
       - "80:80"
-    volumes:
-      - ./client-side/status21-app/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - frontend
     networks:

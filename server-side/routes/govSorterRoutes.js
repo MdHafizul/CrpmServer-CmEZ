@@ -27,7 +27,7 @@ govSorterRouter.post(
     govSorterController.uploadFile
 );
 
-govSorterRouter.get('/proccesedAndSortedData', govSorterController.processAndSort);
+govSorterRouter.get('/processedAndSortedData', govSorterController.processAndSort);
 govSorterRouter.get('/summary', govSorterController.getSummary);
 govSorterRouter.post('/agensiSummary', govSorterController.getAgensiSummary);
 govSorterRouter.post('/detailedData', govSorterController.getDetailData);
