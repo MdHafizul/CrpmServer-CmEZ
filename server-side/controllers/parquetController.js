@@ -40,19 +40,10 @@ exports.uploadAndProcess = async (req, res) => {
   }
 };
 
-
-/*
-@TITLE : Three Function for Summary Cards
-@DESC : Function to calculate and return Total Aged Debt By Acc Status/ Trade Receivable / By Balance Type 
-@access : Public
-@route : GET /api/v2/crpm/summary-card/:filename
-
-*/
-
 // @DESC : Get total aged debt by account status
 // @route GET /api/v2/crpm/summary-card/:filename
 // @access Public
-exports.getTotalAgedDebtByAccStatus = async (req, res, next) => {
+exports.getSummaryCardData = async (req, res, next) => {
   try {
     const { filename } = req.params;
     if (!filename) {
@@ -79,11 +70,11 @@ exports.getTotalAgedDebtByAccStatus = async (req, res, next) => {
       data: convertedData
     });
   } catch (err) {
-    next(err); // Use centralized error handler (see errorHandler.js)
+    next(err); 
   }
 };
 
-// @DESC : Process debt by station data
+// @DESC : Get aged debt by station data
 // @route GET /api/v2/parquet/debt-by-station
 // @access Public
 exports.getAgedDebtByStationData = async (req, res, next) => {
@@ -103,6 +94,64 @@ exports.getAgedDebtByStationData = async (req, res, next) => {
     next(err);
   }
 };
+
+// @DESC : Get aged debt by account class data
+// @route GET /api/v2/parquet/debt-by-account-class
+// @access Public
+exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
+  try{
+    const {filename} = req.params;
+    const { accountClass, viewType = 'agedDebt', station } = req.body;
+
+    let data;
+    if (viewType === 'TR') {
+      data = await parquetServices.processDebtByAccountClassTR(filename, accountClass, station);
+    }
+    else {
+      data = await parquetServices.processDebtByAccountClassAgedDebt(filename, accountClass, station);
+    }
+    res.json({ success: true, filename, data });
+  }catch (err) {
+    next(err);
+  }
+};
+
+// @DESC : Get Aged Debt Sumamry by ADID
+// @route GET /api/v2/parquet/debt-by-adid/:filename
+// @access Public
+exports.getAgedDebtSummaryByADID = async (req, res, next) => {
+  try{
+    const {filename} = req.params;
+    const { adid, station ,  viewType = 'agedDebt' } = req.body;
+
+    let data;
+    if (viewType === 'TR') {
+     data = await parquetServices.processDebtByADIDTR(filename, adid, station);
+    }else {
+      data = await parquetServices.processDebtByADIDAgedDebt(filename, adid, station);
+    }
+    res.json({ success: true, filename, data });
+  }catch (err) {
+    next(err);
+  }
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // @DESC : Get all data from a Parquet file
 // @route GET /api/v2/parquet/all-data/:filename

@@ -21,17 +21,17 @@ const router = express.Router();
 
 // Process Excel → Parquet → Count
 router.post('/process', upload.single('file'), dataController.uploadAndProcess);
-
 // Return Summary Card Data
-router.get('/summary-card/:filename', dataController.getTotalAgedDebtByAccStatus);
-
+router.get('/summary-card/:filename', dataController.getSummaryCardData);
 // Process debt by station
 router.get('/debt-by-station/:filename', dataController.getAgedDebtByStationData);
+// Process debt by account class
+router.get('/debt-by-account-class/:filename', dataController.getAgedDebtByAccountClassData);
+// Process debt by ADID
+router.get('/debt-by-adid/:filename', dataController.getAgedDebtSummaryByADID);
+
 // Get all data from Parquet file
 router.get('/all-data/:filename', dataController.getAllDataFromParquet);
-
-
-
 // Download converted Parquet
 router.get('/download/:filename', dataController.downloadParquet);
 
