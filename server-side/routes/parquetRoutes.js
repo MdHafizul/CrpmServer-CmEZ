@@ -29,6 +29,15 @@ router.get('/debt-by-station/:filename', dataController.getAgedDebtByStationData
 router.get('/debt-by-account-class/:filename', dataController.getAgedDebtByAccountClassData);
 // Process debt by ADID
 router.get('/debt-by-adid/:filename', dataController.getAgedDebtSummaryByADID);
+// Process debt by staffID
+router.get('/debt-by-staff/:filename', dataController.getAgedDebtSummaryByStaffID);
+// Process debt by SMER Segment
+router.get('/debt-by-smer-segment/:filename', dataController.getAgedDebtSummaryBySmerSegment);
+
+
+
+
+
 
 // Get all data from Parquet file
 router.get('/all-data/:filename', dataController.getAllDataFromParquet);

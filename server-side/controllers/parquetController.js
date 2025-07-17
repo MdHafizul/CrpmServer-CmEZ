@@ -80,13 +80,38 @@ exports.getSummaryCardData = async (req, res, next) => {
 exports.getAgedDebtByStationData = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    const {  station, viewType = 'agedDebt' } = req.body;
+    // Accept all filters directly from req.body (not nested)
+    const {
+      viewType = 'AgedDebt', // Default to AgedDebt
+      accClassType = 'ALL', // Default to ALL
+      mitType,
+      businessAreas,
+      adids,
+      accStatus,
+      balanceType,
+      accountClass,
+      agingBucket,
+      totalOutstandingRange,
+      smerSegments
+    } = req.body;
 
     let data;
     if (viewType === 'TR') {
-      data = await parquetServices.processDebtByStationTR(filename, station);
+      data = await parquetServices.processDebtByStationTR(filename, {
+        accClassType,
+        mitType,
+        businessAreas,
+        adids,
+        accStatus,
+        balanceType,
+        accountClass,
+        agingBucket,
+        totalOutstandingRange,
+        smerSegments
+      });
     } else {
-      data = await parquetServices.processDebtByStationAgedDebt(filename, station);
+      // For agedDebt view, you can still pass station filter if needed
+      data = await parquetServices.processDebtByStationAgedDebt(filename, businessAreas);
     }
 
     res.json({ success: true, filename, data });
@@ -98,17 +123,19 @@ exports.getAgedDebtByStationData = async (req, res, next) => {
 // @DESC : Get aged debt by account class data
 // @route GET /api/v2/parquet/debt-by-account-class
 // @access Public
+// @DESC : Get aged debt by account class data
+// @route GET /api/v2/parquet/debt-by-account-class
+// @access Public
 exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
   try{
-    const {filename} = req.params;
-    const { accountClass, viewType = 'agedDebt', station } = req.body;
+    const { filename } = req.params;
+    const { viewType = 'agedDebt', ...filters } = req.body;
 
     let data;
     if (viewType === 'TR') {
-      data = await parquetServices.processDebtByAccountClassTR(filename, accountClass, station);
-    }
-    else {
-      data = await parquetServices.processDebtByAccountClassAgedDebt(filename, accountClass, station);
+      data = await parquetServices.processDebtByAccountClassTR(filename, filters);
+    } else {
+      data = await parquetServices.processDebtByAccountClassAgedDebt(filename, filters);
     }
     res.json({ success: true, filename, data });
   }catch (err) {
@@ -121,14 +148,13 @@ exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
 // @access Public
 exports.getAgedDebtSummaryByADID = async (req, res, next) => {
   try{
-    const {filename} = req.params;
-    const { adid, station ,  viewType = 'agedDebt' } = req.body;
+    const {filename} = req.params;const { viewType = 'agedDebt', ...filters } = req.body;
 
     let data;
     if (viewType === 'TR') {
-     data = await parquetServices.processDebtByADIDTR(filename, adid, station);
+     data = await parquetServices.processDebtByADIDTR(filename, filters);
     }else {
-      data = await parquetServices.processDebtByADIDAgedDebt(filename, adid, station);
+      data = await parquetServices.processDebtByADIDAgedDebt(filename, filters);
     }
     res.json({ success: true, filename, data });
   }catch (err) {
@@ -136,21 +162,46 @@ exports.getAgedDebtSummaryByADID = async (req, res, next) => {
   }
 };
 
+// @DESC : Get Aged Debt Summary by SMER Segment
+// @route GET /api/v2/parquet/debt-by-smer-segment/:filename
+exports.getAgedDebtSummaryBySmerSegment = async (req, res, next) => {
+  try {
+    const {filename} = req.params;
+    const { viewType = 'agedDebt', ...filters } = req.body;
 
+    let data ;
+    if(viewType === 'TR') {
+      data = await parquetServices.processDebtBySmerSegmentTR(filename, filters);
+    }
+    else {
+      data = await parquetServices.processDebtBySmerSegmentAgedDebt(filename, filters);
+    } 
+    res.json({ success: true, filename, data });
+  }catch (err) {
+    next(err);
+  }
+}
 
+// @DESC : Get Aged Debt Summary by Staff
+// @route GET /api/v2/parquet/debt-by-staff/:filename
+// @access Public
+exports.getAgedDebtSummaryByStaffID = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const { station, viewType = 'agedDebt' } = req.body;
 
+    let data;
+    if (viewType === 'TR') {
+      data = await parquetServices.processDebtByStaffIDTR(filename, station);
+    } else {
+      data = await parquetServices.processDebtByStaffIDAgedDebt(filename, station);
+    }
 
-
-
-
-
-
-
-
-
-
-
-
+    res.json({ success: true, filename, data });
+  } catch (err) {
+    next(err);
+  }
+}
 
 
 // @DESC : Get all data from a Parquet file

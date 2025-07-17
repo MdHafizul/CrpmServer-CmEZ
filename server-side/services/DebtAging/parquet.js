@@ -2,7 +2,19 @@ const duckdb = require('duckdb');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
-const { getFileReader, convertBigIntToNumber } = require('../../utils/parquetHelper');
+const {
+  getFileReader,
+  convertBigIntToNumber,
+  buildWhereClauses,
+  initializeDuckDB,
+  getBusinessAreaName,
+  formatStationSummary,
+  formatAccountClassSummary,
+  formatADIDSummary,
+  formatSMERSegmentSummary,
+  formatPercent,
+  sumFields
+} = require('../../utils/parquetHelper');
 
 // Initialize DuckDB connection
 const db = new duckdb.Database(':memory:');
@@ -10,47 +22,9 @@ const connection = new duckdb.Connection(db);
 const dbRun = promisify(connection.run.bind(connection));
 const dbAll = promisify(connection.all.bind(connection));
 
-// Preload extensions (if needed)
-async function initializeDuckDB() {
-  if (isInitialized) return;
-  try {
-    await dbRun("INSTALL spatial;");
-    await dbRun("LOAD spatial;");
-    isInitialized = true;
-  } catch (err) {
-    console.error("DuckDB extension load error:", err);
-  }
-}
-let isInitialized = false;
-
-// Business area mapping
-const businessAreas = [
-  { code: '6210', name: 'TNB IPOH' },
-  { code: '6211', name: 'TNB KAMPAR' },
-  { code: '6212', name: 'TNB BIDOR' },
-  { code: '6213', name: 'TNB TANJONG MALIM' },
-  { code: '6218', name: 'TNB SERI ISKANDAR' },
-  { code: '6219', name: 'TNB ULU KINTA' },
-  { code: '6220', name: 'TNB TAIPING' },
-  { code: '6221', name: 'TNB BATU GAJAH' },
-  { code: '6222', name: 'TNB KUALA KANGSAR' },
-  { code: '6223', name: 'TNB GERIK' },
-  { code: '6224', name: 'TNB BAGAN SERAI' },
-  { code: '6225', name: 'TNB SG. SIPUT' },
-  { code: '6227', name: 'TNB SRI MANJUNG' },
-  { code: '6250', name: 'TNB TELUK INTAN' },
-  { code: '6252', name: 'TNB HUTAN MELINTANG' }
-];
-
-// Helper to get business area name
-function getBusinessAreaName(code) {
-  const area = businessAreas.find(b => b.code === String(code));
-  return area ? area.name : "Unknown";
-}
-
 // Function to convert Excel file to PARQUET format
 exports.convertExcelToParquet = async (excelPath) => {
-  await initializeDuckDB();
+  await initializeDuckDB(dbRun);
   const parquetPath = excelPath.replace(/\.(xlsx|xlsm|xltx|xltm)$/i, '.parquet');
   const normalizedExcelPath = path.resolve(excelPath).replace(/\\/g, '/');
   const normalizedParquetPath = path.resolve(parquetPath).replace(/\\/g, '/');
@@ -70,7 +44,7 @@ exports.convertExcelToParquet = async (excelPath) => {
 
 //Function to calculate and return Total Aged Debt By Acc Status Card
 exports.getTotalAgedDebtByAccStatus = async (parquetFilename) => {
-  await initializeDuckDB();
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
 
   const statusQuery = `
@@ -120,7 +94,7 @@ exports.getTotalAgedDebtByAccStatus = async (parquetFilename) => {
 
 // Function to calculate and return Total Trade Receivable
 exports.getTotalTradeReceivable = async (parquetFilename) => {
-  await initializeDuckDB();
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
 
   // Query for all required fields and counts, plus unique account count
@@ -174,7 +148,7 @@ exports.getTotalTradeReceivable = async (parquetFilename) => {
 
 // Function to get total aged debt by balance type
 exports.getTotalByBalanceType = async (parquetFilename) => {
-  await initializeDuckDB();
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
 
   // Query for all balance types and MIT
@@ -222,15 +196,16 @@ exports.getTotalByBalanceType = async (parquetFilename) => {
 @DESC : Function to calculate and return Total Summary Aged Debt By Station/ Acc Class /ADID / Staff Debt
 @access : Public
 @route : GET /api/v2/crpm/{{tableName}}/:filename
-@body : { Filter by station, acc class, ADID, staff debt }
 */
 
-//Table 1 - Summary Aged Debt By Station
-// Trade Receivable view
-exports.processDebtByStationTR = async (parquetFilename, station = null) => {
-  await initializeDuckDB();
+//Table 1 - Summary Aged Debt By Station (Trade Receivable view) with advanced filters
+// TR view with filters
+exports.processDebtByStationTR = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  let query = `
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
@@ -239,15 +214,160 @@ exports.processDebtByStationTR = async (parquetFilename, station = null) => {
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
       SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
     FROM read_parquet('${normalizedPath}')
-    WHERE 1=1
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR)
   `;
+
+  const result = await dbAll(query);
+  return formatStationSummary(result, getBusinessAreaName);
+};
+
+// Aged Debt view
+exports.processDebtByStationAgedDebt = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR)
+  `;
+
+  const result = await dbAll(query);
+  return formatStationSummary(result, getBusinessAreaName, true); // <-- true for isAgedDebtView
+};
+
+//Table 2 - Summary Aged Debt By Acc Class
+// TR view with filters
+exports.processDebtByAccountClassTR = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("Acc Class" AS VARCHAR)
+    ORDER BY "Buss Area", "Acc Class"
+  `;
+
+  const result = await dbAll(query);
+  const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
+  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder);
+};
+
+// Aged Debt view
+exports.processDebtByAccountClassAgedDebt = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("Acc Class" AS VARCHAR)
+    ORDER BY "Buss Area", "Acc Class"
+  `;
+
+  const result = await dbAll(query);
+  const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
+  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, true);
+};
+
+
+//Table 3 - Summary Aged Debt By ADID
+// Trade Receivable 
+exports.processDebtByADIDTR = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("ADID" AS VARCHAR) AS "ADID",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("ADID" AS VARCHAR)
+    ORDER BY "Buss Area", "ADID"
+  `;
+
+  const result = await dbAll(query);
+  const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder);
+};
+// Aged Debt view
+exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
+
+  const query = `
+    SELECT 
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("ADID" AS VARCHAR) AS "ADID",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("ADID" AS VARCHAR)
+    ORDER BY "Buss Area", "ADID"
+  `;
+
+  const result = await dbAll(query);
+  const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder, true); // <-- true for isAgedDebtView
+};
+
+//Table 4 - Staff Debt
+// Trade Receivable view
+exports.processDebtByStaffIDTR = async (parquetFilename, station = null) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+
+  let query = `
+    SELECT
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
+      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+    WHERE "Staff ID" IS NOT NULL AND "Staff ID" <> ''
+  `;
+
   if (station && Array.isArray(station) && station.length > 0) {
     const stationList = station.map(s => `'${s}'`).join(',');
     query += ` AND "Buss Area" IN (${stationList})`;
   } else if (station) {
     query += ` AND "Buss Area" = '${station}'`;
   }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR)`;
+  query += `GROUP BY CAST("Buss Area" AS VARCHAR)
+`;
 
   const result = await dbAll(query);
 
@@ -282,26 +402,27 @@ exports.processDebtByStationTR = async (parquetFilename, station = null) => {
 
   return { data, grandTotal };
 };
-
-// Aged Debt view
-exports.processDebtByStationAgedDebt = async (parquetFilename, station = null) => {
-  await initializeDuckDB();
+//aged debt view
+exports.processDebtByStaffIDAgedDebt = async (parquetFilename, station = null) => {
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
   let query = `
-    SELECT 
+    SELECT
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
-    WHERE 1=1
+    WHERE "Staff ID" IS NOT NULL AND "Staff ID" <> ''
   `;
+
   if (station && Array.isArray(station) && station.length > 0) {
     const stationList = station.map(s => `'${s}'`).join(',');
     query += ` AND "Buss Area" IN (${stationList})`;
   } else if (station) {
     query += ` AND "Buss Area" = '${station}'`;
   }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR)`;
+  query += `GROUP BY CAST("Buss Area" AS VARCHAR)
+`;
 
   const result = await dbAll(query);
 
@@ -328,471 +449,52 @@ exports.processDebtByStationAgedDebt = async (parquetFilename, station = null) =
   return { data, grandTotal };
 };
 
-//Table 2 - Summary Aged Debt By Acc Class
-// Trade Receivable view
-exports.processDebtByAccountClassTR = async (parquetFilename, accClass = null, station = null) => {
-  await initializeDuckDB();
+//Table 5 - Summary Aged Debt By SMER Segment
+// Trade Receivable view 
+exports.processDebtBySmerSegmentTR = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
 
-  let query = `
+  const query = `
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
       SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
       SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
     FROM read_parquet('${normalizedPath}')
-    WHERE "Acc Class" IN ('LPCN', 'OPCN', 'LPCG', 'OPCG')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("SMER Segment" AS VARCHAR)
+    ORDER BY "Buss Area", "SMER Segment"
   `;
 
-  if (accClass) {
-    query += ` AND "Acc Class" = '${accClass}'`;
-  }
-  if (station && Array.isArray(station) && station.length > 0) {
-    const stationList = station.map(s => `'${s}'`).join(',');
-    query += ` AND "Buss Area" IN (${stationList})`;
-  } else if (station) {
-    query += ` AND "Buss Area" = '${station}'`;
-  }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR), CAST("Acc Class" AS VARCHAR) ORDER BY "Buss Area", "Acc Class"`;
-
   const result = await dbAll(query);
-
-  // Calculate grand totals
-  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
-  const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
-  const totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
-  const totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
-  const totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
-
-  // Group by station and always order account classes as OPCN, LPCN, LPCG, OPCG
-  const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
-  const grouped = {};
-
-  result.forEach(row => {
-    const businessArea = String(row["Buss Area"]);
-    if (!grouped[businessArea]) {
-      grouped[businessArea] = {
-        businessArea,
-        station: getBusinessAreaName(businessArea),
-        classes: {}
-      };
-    }
-    grouped[businessArea].classes[row["Acc Class"]] = {
-      accountClass: String(row["Acc Class"]),
-      numberOfAccounts: Number(row["Number of Accounts"]) || 0,
-      totalUndue: Number(row["Total Undue"]) || 0,
-      curMthUnpaid: Number(row["Cur.Mth Unpaid"]) || 0,
-      ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
-      totalUnpaid: Number(row["Total Unpaid"]) || 0,
-      percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  });
-
-  // Flatten to array, always in order OPCN, LPCN, LPCG, OPCG for each station
-  const data = [];
-  Object.values(grouped).forEach(station => {
-    accountClassOrder.forEach(accClass => {
-      if (station.classes[accClass]) {
-        data.push({
-          businessArea: station.businessArea,
-          station: station.station,
-          accountClass: accClass,
-          numberOfAccounts: station.classes[accClass].numberOfAccounts,
-          totalUndue: station.classes[accClass].totalUndue,
-          curMthUnpaid: station.classes[accClass].curMthUnpaid,
-          ttlOSAmt: station.classes[accClass].ttlOSAmt,
-          totalUnpaid: station.classes[accClass].totalUnpaid,
-          percentOfTotal: station.classes[accClass].percentOfTotal
-        });
-      }
-    });
-  });
-
-  // Station totals
-  const stationTotals = Object.values(grouped).map(station => {
-    let totalNumberOfAccounts = 0;
-    let totalTtlOSAmt = 0;
-    let totalUndue = 0;
-    let totalCurMthUnpaid = 0;
-    let totalUnpaid = 0;
-    accountClassOrder.forEach(accClass => {
-      const cls = station.classes[accClass];
-      if (cls) {
-        totalNumberOfAccounts += cls.numberOfAccounts;
-        totalTtlOSAmt += cls.ttlOSAmt;
-        totalUndue += cls.totalUndue;
-        totalCurMthUnpaid += cls.curMthUnpaid;
-        totalUnpaid += cls.totalUnpaid;
-      }
-    });
-    return {
-      businessArea: station.businessArea,
-      station: station.station,
-      totalNumberOfAccounts,
-      totalTtlOSAmt,
-      totalUndue,
-      totalCurMthUnpaid,
-      totalUnpaid,
-      totalPercentOfTotal: totalAccounts > 0 ? ((totalNumberOfAccounts / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
-
-  // Grand total
-  const grandTotal = {
-    totalNumberOfAccounts: totalAccounts,
-    totalTtlOSAmt,
-    totalUndue,
-    totalCurMthUnpaid,
-    totalUnpaid,
-    totalPercentOfTotal: "100.00"
-  };
-
-  return { data, stationTotals, grandTotal };
+  return formatSMERSegmentSummary(result, getBusinessAreaName, false);
 };
-
 // Aged Debt view
-exports.processDebtByAccountClassAgedDebt = async (parquetFilename, accClass = null, station = null) => {
-  await initializeDuckDB();
+exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {}) => {
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
 
-  let query = `
+  const query = `
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
-    WHERE "Acc Class" IN ('LPCN', 'OPCN', 'LPCG', 'OPCG')
+    WHERE ${whereClause}
+    GROUP BY CAST("Buss Area" AS VARCHAR), CAST("SMER Segment" AS VARCHAR)
+    ORDER BY "Buss Area", "SMER Segment"
   `;
 
-  if (accClass) {
-    query += ` AND "Acc Class" = '${accClass}'`;
-  }
-  if (station && Array.isArray(station) && station.length > 0) {
-    const stationList = station.map(s => `'${s}'`).join(',');
-    query += ` AND "Buss Area" IN (${stationList})`;
-  } else if (station) {
-    query += ` AND "Buss Area" = '${station}'`;
-  }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR), CAST("Acc Class" AS VARCHAR) ORDER BY "Buss Area", "Acc Class"`;
-
   const result = await dbAll(query);
-
-  // Calculate grand totals
-  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
-  const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
-
-  // Group by station and always order account classes as OPCN, LPCN, LPCG, OPCG
-  const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
-  const grouped = {};
-
-  result.forEach(row => {
-    const businessArea = String(row["Buss Area"]);
-    if (!grouped[businessArea]) {
-      grouped[businessArea] = {
-        businessArea,
-        station: getBusinessAreaName(businessArea),
-        classes: {}
-      };
-    }
-    grouped[businessArea].classes[row["Acc Class"]] = {
-      accountClass: String(row["Acc Class"]),
-      numberOfAccounts: Number(row["Number of Accounts"]) || 0,
-      ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
-      percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  });
-
-  // Flatten to array, always in order OPCN, LPCN, LPCG, OPCG for each station
-  const data = [];
-  Object.values(grouped).forEach(station => {
-    accountClassOrder.forEach(accClass => {
-      if (station.classes[accClass]) {
-        data.push({
-          businessArea: station.businessArea,
-          station: station.station,
-          accountClass: accClass,
-          numberOfAccounts: station.classes[accClass].numberOfAccounts,
-          ttlOSAmt: station.classes[accClass].ttlOSAmt,
-          percentOfTotal: station.classes[accClass].percentOfTotal
-        });
-      }
-    });
-  });
-
-  // Station totals
-  const stationTotals = Object.values(grouped).map(station => {
-    let totalNumberOfAccounts = 0;
-    let totalTtlOSAmt = 0;
-    accountClassOrder.forEach(accClass => {
-      const cls = station.classes[accClass];
-      if (cls) {
-        totalNumberOfAccounts += cls.numberOfAccounts;
-        totalTtlOSAmt += cls.ttlOSAmt;
-      }
-    });
-    return {
-      businessArea: station.businessArea,
-      station: station.station,
-      totalNumberOfAccounts,
-      totalTtlOSAmt,
-      totalPercentOfTotal: totalAccounts > 0 ? ((totalNumberOfAccounts / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
-
-  // Grand total
-  const grandTotal = {
-    totalNumberOfAccounts: totalAccounts,
-    totalTtlOSAmt,
-    totalPercentOfTotal: "100.00"
-  };
-
-  return { data, stationTotals, grandTotal };
+  return formatSMERSegmentSummary(result, getBusinessAreaName, true);
 };
-
-//Table 2 - Summary Aged Debt By ADID
-// Trade Receivable view
-
-exports.processDebtByADIDTR = async (parquetFilename, adid = null, station = null) => {
-  await initializeDuckDB();
-  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-
-  let query = `
-    SELECT 
-      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-      CAST("ADID" AS VARCHAR) AS "ADID",
-      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
-      SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
-      SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
-      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
-      SUM(CAST("Total Unpaid" AS DOUBLE)) AS "Total Unpaid"
-    FROM read_parquet('${normalizedPath}')
-    WHERE "ADID" IN ('AG','CM','DM','IN','MN','SL')
-  `;
-
-  if(adid && Array.isArray(adid) && adid.length > 0) {
-    const adidList = adid.map (a => `'${a}'`).join(',');
-    query += ` AND "ADID" IN (${adidList})`;
-  }
-  if(station && Array.isArray(station) && station.length > 0) {
-    const stationList = station.map(s => `'${s}'`).join(',');
-    query += ` AND "Buss Area" IN (${stationList})`;
-  }else if(station) {
-    query += ` AND "Buss Area" = '${station}'`;
-  }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR), CAST("ADID" AS VARCHAR) ORDER BY "Buss Area", "ADID"`;
-
-  const result = await dbAll(query);
-
-  // Calculate grand totals
-  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
-  const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
-  const totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
-  const totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
-  const totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
-
-  // Group by station and always order ADID as AG, CM, DM, IN, MN, SL
-  const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  const grouped = {};
-
-  result.forEach(row => {
-    const businessArea = String(row["Buss Area"]);
-    if(!grouped[businessArea]){
-      grouped[businessArea] = {
-        businessArea,
-        station: getBusinessAreaName(businessArea),
-        adids: {}
-      };
-    }
-
-    grouped[businessArea].adids[row["ADID"]] = {
-      adid: String(row["ADID"]),
-      numberOfAccounts: Number(row["Number of Accounts"]) || 0,
-      totalUndue: Number(row["Total Undue"]) || 0,
-      curMthUnpaid: Number(row["Cur.Mth Unpaid"]) || 0,
-      ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
-      totalUnpaid: Number(row["Total Unpaid"]) || 0,
-      percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  });
-
-  // Flatten to array, always in order AG, CM, DM, IN, MN, SL for each station
-  const data = [];
-  Object.values(grouped).forEach(station => {
-    adidOrder.forEach(adid => {
-      if (station.adids[adid]) {
-        data.push({
-          businessArea: station.businessArea,
-          station: station.station,
-          adid: adid,
-          numberOfAccounts: station.adids[adid].numberOfAccounts,
-          totalUndue: station.adids[adid].totalUndue,
-          curMthUnpaid: station.adids[adid].curMthUnpaid,
-          ttlOSAmt: station.adids[adid].ttlOSAmt,
-          totalUnpaid: station.adids[adid].totalUnpaid,
-          percentOfTotal: station.adids[adid].percentOfTotal
-        });
-      }
-    });
-  });
-
-  //station totals
-  const stationTotals = Object.values(grouped).map(station => {
-    let totalNumberOfAccounts = 0;
-    let totalTtlOSAmt = 0;
-    let totalUndue = 0;
-    let totalCurMthUnpaid = 0;
-    let totalUnpaid = 0;
-    adidOrder.forEach(adid => {
-      const adidData = station.adids[adid];
-      if (adidData) {
-        totalNumberOfAccounts += adidData.numberOfAccounts;
-        totalTtlOSAmt += adidData.ttlOSAmt;
-        totalUndue += adidData.totalUndue;
-        totalCurMthUnpaid += adidData.curMthUnpaid;
-        totalUnpaid += adidData.totalUnpaid;
-      }
-    });
-    return {
-      businessArea: station.businessArea,
-      station: station.station,
-      totalNumberOfAccounts,
-      totalTtlOSAmt,
-      totalUndue,
-      totalCurMthUnpaid,
-      totalUnpaid,
-      totalPercentOfTotal: totalAccounts > 0 ? ((totalNumberOfAccounts / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
-
-  // Grand total
-  const grandTotal = {
-    totalNumberOfAccounts: totalAccounts,
-    totalTtlOSAmt,
-    totalUndue,
-    totalCurMthUnpaid,
-    totalUnpaid,
-    totalPercentOfTotal: "100.00"
-  };
-
-  return { data, stationTotals, grandTotal };
-}
-
-// Aged Debt view
-exports.processDebtByADIDAgedDebt = async (parquetFilename, adid = null, station = null) => {
-  await initializeDuckDB();
-  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-
-  let query = `
-    SELECT 
-      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
-      CAST("ADID" AS VARCHAR) AS "ADID",
-      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
-      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
-    FROM read_parquet('${normalizedPath}')
-    WHERE "ADID" IN ('AG','CM','DM','IN','MN','SL')
-  `;
-
-  if(adid && Array.isArray(adid) && adid.length > 0) {
-    const adidList = adid.map (a => `'${a}'`).join(',');
-    query += ` AND "ADID" IN (${adidList})`;
-  }
-  if(station && Array.isArray(station) && station.length > 0) {
-    const stationList = station.map(s => `'${s}'`).join(',');
-    query += ` AND "Buss Area" IN (${stationList})`;
-  }else if(station) {
-    query += ` AND "Buss Area" = '${station}'`;
-  }
-  query += ` GROUP BY CAST("Buss Area" AS VARCHAR), CAST("ADID" AS VARCHAR) ORDER BY "Buss Area", "ADID"`;
-
-  const result = await dbAll(query);
-
-  // Calculate grand totals
-  const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
-  const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
-
-  // Group by station and always order ADID as AG, CM, DM, IN, MN, SL
-  const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  const grouped = {};
-
-  result.forEach(row => {
-    const businessArea = String(row["Buss Area"]);
-    if(!grouped[businessArea]){
-      grouped[businessArea] = {
-        businessArea,
-        station: getBusinessAreaName(businessArea),
-        adids: {}
-      };
-    }
-
-    grouped[businessArea].adids[row["ADID"]] = {
-      adid: String(row["ADID"]),
-      numberOfAccounts: Number(row["Number of Accounts"]) || 0,
-      totalUndue: Number(row["TTL O/S Amt"]) || 0,
-      curMthUnpaid: Number(row["Cur.MthUnpaid"]) || 0,
-      ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
-      totalUnpaid: Number(row["Total Unpaid"]) || 0,
-      percentOfTotal: totalAccounts > 0 ? ((Number(row["Number of Accounts"]) / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  });
-
-    // Flatten to array, always in order AG, CM, DM, IN, MN, SL for each station
-  const data = [];
-  Object.values(grouped).forEach(station => {
-    adidOrder.forEach(adid => {
-      if (station.adids[adid]) {
-        data.push({
-          businessArea: station.businessArea,
-          station: station.station,
-          adid: adid,
-          numberOfAccounts: station.adids[adid].numberOfAccounts,
-          ttlOSAmt: station.adids[adid].ttlOSAmt,
-          percentOfTotal: station.adids[adid].percentOfTotal
-        });
-      }
-    });
-  });
-
-  //station totals
-  const stationTotals = Object.values(grouped).map(station => {
-    let totalNumberOfAccounts = 0;
-    let totalTtlOSAmt = 0;
-    adidOrder.forEach(adid => {
-      const adidData = station.adids[adid];
-      if (adidData) {
-        totalNumberOfAccounts += adidData.numberOfAccounts;
-        totalTtlOSAmt += adidData.ttlOSAmt;
-      }
-    });
-    return {
-      businessArea: station.businessArea,
-      station: station.station,
-      totalNumberOfAccounts,
-      totalTtlOSAmt,
-      totalPercentOfTotal: totalAccounts > 0 ? ((totalNumberOfAccounts / totalAccounts) * 100).toFixed(2) : "0.00"
-    };
-  }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
-
-  // Grand total
-  const grandTotal = {
-    totalNumberOfAccounts: totalAccounts,
-    totalTtlOSAmt,
-    totalPercentOfTotal: "100.00"
-  };
-
-  return { data, stationTotals, grandTotal };
-}
-
-
-
-
-
-
-
-
 
 
 
@@ -816,7 +518,7 @@ exports.processDebtByADIDAgedDebt = async (parquetFilename, adid = null, station
 
 //Function to return all data
 exports.getAllDataFromParquet = async (parquetFilename, { cursor = null, limit = null, sortField = "Contract Acc", sortDirection = "ASC" } = {}) => {
-  await initializeDuckDB();
+  await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
   let query = `
     SELECT
