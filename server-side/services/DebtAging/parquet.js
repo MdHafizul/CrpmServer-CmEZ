@@ -118,7 +118,7 @@ exports.getTotalTradeReceivable = async (parquetFilename) => {
   const numOfAccUndue = Number(row.NumOfAccUndue) || 0;
   const currentMonthUnpaid = Number(row.CurrentMonthUnpaid) || 0;
   const numOfAccCurMthUnpaid = Number(row.NumOfAccCurMthUnpaid) || 0;
-  const totalNoOfAccTR = Number(row.TotalTRNoOfAcc) || 0;
+  const totalNoOfAccTR = Number(row.TotalNoOfAccTR) || 0;
 
   const totalCurrentMonth = totalUndue + currentMonthUnpaid;
   const totalTradeReceivable = totalOutstanding + totalCurrentMonth;
@@ -217,8 +217,8 @@ exports.processDebtByStationTR = async (parquetFilename, filters = {}) => {
     WHERE ${whereClause}
     GROUP BY CAST("Buss Area" AS VARCHAR)
   `;
-const result = await dbAll(query);
-return formatStationSummary(result, getBusinessAreaName, false, filters);
+  const result = await dbAll(query);
+  return formatStationSummary(result, getBusinessAreaName, false, filters);
 };
 
 // Aged Debt view
@@ -239,7 +239,7 @@ exports.processDebtByStationAgedDebt = async (parquetFilename, filters = {}) => 
   `;
 
   const result = await dbAll(query);
-  return formatStationSummary(result, getBusinessAreaName, true, filters); 
+  return formatStationSummary(result, getBusinessAreaName, true, filters);
 };
 
 //Table 2 - Summary Aged Debt By Acc Class
@@ -320,7 +320,7 @@ exports.processDebtByADIDTR = async (parquetFilename, filters = {}) => {
 
   const result = await dbAll(query);
   const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  return formatADIDSummary(result, getBusinessAreaName, adidOrder, false , filters);
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder, false, filters);
 };
 // Aged Debt view
 exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
@@ -343,7 +343,7 @@ exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
 
   const result = await dbAll(query);
   const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  return formatADIDSummary(result, getBusinessAreaName, adidOrder, true,filters); // <-- true for isAgedDebtView
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder, true, filters); // <-- true for isAgedDebtView
 };
 
 //Table 4 - Staff Debt
@@ -499,7 +499,7 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
   `;
 
   const result = await dbAll(query);
-  return formatSMERSegmentSummary(result, getBusinessAreaName, true , filters); 
+  return formatSMERSegmentSummary(result, getBusinessAreaName, true, filters);
 };
 
 //Table 6 - Detailed Table for Aged Debt(FULL AND PARTIAL)

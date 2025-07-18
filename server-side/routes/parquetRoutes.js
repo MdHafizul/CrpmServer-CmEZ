@@ -24,7 +24,7 @@ router.post('/process', upload.single('file'), dataController.uploadAndProcess);
 // Return Summary Card Data
 router.get('/summary-card/:filename', dataController.getSummaryCardData);
 // Process debt by station
-router.get('/debt-by-station/:filename', dataController.getAgedDebtByStationData);
+router.post('/debt-by-station/:filename', dataController.getAgedDebtByStationData);
 // Process debt by account class
 router.get('/debt-by-account-class/:filename', dataController.getAgedDebtByAccountClassData);
 // Process debt by ADID
