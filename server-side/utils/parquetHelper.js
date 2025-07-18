@@ -64,13 +64,12 @@ function buildWhereClauses(filters = {}) {
     whereClauses.push(`"Acc Class" IN ('LPCN', 'OPCN')`);
   }
 
-  // MIT Type
+  // MIT Type (force filter if MIT)
   if (mitType === "MIT") {
     whereClauses.push(`CAST("MIT Amt" AS DOUBLE) <> 0`);
   } else if (mitType === "NON_MIT") {
     whereClauses.push(`(CAST("MIT Amt" AS DOUBLE) = 0 OR "MIT Amt" IS NULL)`);
   }
-
   // Business Area
   if (businessAreas.length > 0) {
     whereClauses.push(`"Buss Area" IN (${businessAreas.map(a => `'${a}'`).join(",")})`);
@@ -174,9 +173,10 @@ function sumFields(arr, fields) {
 }
 
 // Table 1: By Station
-function formatStationSummary(result, getBusinessAreaName, isAgedDebtView = false) {
+function formatStationSummary(result, getBusinessAreaName, isAgedDebtView = false, filters = {}) {
   const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
   const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
+  const totalMITAmt = result.reduce((sum, row) => sum + (Number(row["MIT Amt"]) || 0), 0);
 
   const data = result.map(row => {
     const base = {
@@ -190,6 +190,9 @@ function formatStationSummary(result, getBusinessAreaName, isAgedDebtView = fals
       base.totalUndue = Number(row["Total Undue"]) || 0;
       base.curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
       base.totalUnpaid = Number(row["Total Unpaid"]) || 0;
+      if (filters && filters.mitType === "MIT") {
+        base.mitAmt = Number(row["MIT Amt"]) || 0;
+      }
     }
     return base;
   }).sort((a, b) => Number(b.percentOfTotal) - Number(a.percentOfTotal));
@@ -203,15 +206,19 @@ function formatStationSummary(result, getBusinessAreaName, isAgedDebtView = fals
     grandTotal.totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
     grandTotal.totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
     grandTotal.totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
+    if (filters && filters.mitType === "MIT") {
+      grandTotal.totalMITAmt = totalMITAmt;
+    }
   }
 
   return { data, grandTotal };
 }
 
 // Table 2: By Account Class
-function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, isAgedDebtView = false) {
+function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, isAgedDebtView = false, filters = {}) {
   const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
   const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
+  const totalMITAmt = result.reduce((sum, row) => sum + (Number(row["MIT Amt"]) || 0), 0);
 
   // Group by business area
   const grouped = {};
@@ -234,6 +241,9 @@ function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrde
       grouped[businessArea].classes[row["Acc Class"]].totalUndue = Number(row["Total Undue"]) || 0;
       grouped[businessArea].classes[row["Acc Class"]].curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
       grouped[businessArea].classes[row["Acc Class"]].totalUnpaid = Number(row["Total Unpaid"]) || 0;
+      if (filters && filters.mitType === "MIT") {
+        grouped[businessArea].classes[row["Acc Class"]].mitAmt = Number(row["MIT Amt"]) || 0;
+      }
     }
   });
 
@@ -255,6 +265,9 @@ function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrde
           base.totalUndue = cls.totalUndue;
           base.curMthUnpaid = cls.curMthUnpaid;
           base.totalUnpaid = cls.totalUnpaid;
+          if (filters && filters.mitType === "MIT") {
+            base.mitAmt = cls.mitAmt || 0;
+          }
         }
         data.push(base);
       }
@@ -268,15 +281,16 @@ function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrde
     let totalUndue = 0;
     let totalCurMthUnpaid = 0;
     let totalUnpaid = 0;
-    accountClassOrder.forEach(accClass => {
-      const cls = station.classes[accClass];
-      if (cls) {
-        totalNumberOfAccounts += cls.numberOfAccounts;
-        totalTtlOSAmt += cls.ttlOSAmt;
-        if (!isAgedDebtView) {
-          totalUndue += cls.totalUndue;
-          totalCurMthUnpaid += cls.curMthUnpaid;
-          totalUnpaid += cls.totalUnpaid;
+    let totalMITAmtStation = 0;
+    Object.values(station.classes).forEach(cls => {
+      totalNumberOfAccounts += cls.numberOfAccounts;
+      totalTtlOSAmt += cls.ttlOSAmt;
+      if (!isAgedDebtView) {
+        totalUndue += cls.totalUndue;
+        totalCurMthUnpaid += cls.curMthUnpaid;
+        totalUnpaid += cls.totalUnpaid;
+        if (filters && filters.mitType === "MIT") {
+          totalMITAmtStation += cls.mitAmt || 0;
         }
       }
     });
@@ -291,6 +305,9 @@ function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrde
       base.totalUndue = totalUndue;
       base.totalCurMthUnpaid = totalCurMthUnpaid;
       base.totalUnpaid = totalUnpaid;
+      if (filters && filters.mitType === "MIT") {
+        base.totalMITAmt = totalMITAmtStation;
+      }
     }
     return base;
   }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
@@ -305,15 +322,19 @@ function formatAccountClassSummary(result, getBusinessAreaName, accountClassOrde
     grandTotal.totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
     grandTotal.totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
     grandTotal.totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
+    if (filters && filters.mitType === "MIT") {
+      grandTotal.totalMITAmt = totalMITAmt;
+    }
   }
 
   return { data, stationTotals, grandTotal };
 }
 
 // Table 3: By ADID
-function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtView = false) {
+function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtView = false, filters = {}) {
   const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
   const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
+  const totalMITAmt = result.reduce((sum, row) => sum + (Number(row["MIT Amt"]) || 0), 0);
 
   // Group by business area
   const grouped = {};
@@ -336,6 +357,9 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
       grouped[businessArea].adids[row["ADID"]].totalUndue = Number(row["Total Undue"]) || 0;
       grouped[businessArea].adids[row["ADID"]].curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
       grouped[businessArea].adids[row["ADID"]].totalUnpaid = Number(row["Total Unpaid"]) || 0;
+      if (filters && filters.mitType === "MIT") {
+        grouped[businessArea].adids[row["ADID"]].mitAmt = Number(row["MIT Amt"]) || 0;
+      }
     }
   });
 
@@ -357,6 +381,9 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
           base.totalUndue = adidData.totalUndue;
           base.curMthUnpaid = adidData.curMthUnpaid;
           base.totalUnpaid = adidData.totalUnpaid;
+          if (filters && filters.mitType === "MIT") {
+            base.mitAmt = adidData.mitAmt || 0;
+          }
         }
         data.push(base);
       }
@@ -370,6 +397,7 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
     let totalUndue = 0;
     let totalCurMthUnpaid = 0;
     let totalUnpaid = 0;
+    let totalMITAmtStation = 0;
     adidOrder.forEach(adid => {
       const adidData = station.adids[adid];
       if (adidData) {
@@ -379,6 +407,9 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
           totalUndue += adidData.totalUndue;
           totalCurMthUnpaid += adidData.curMthUnpaid;
           totalUnpaid += adidData.totalUnpaid;
+          if (filters && filters.mitType === "MIT") {
+            totalMITAmtStation += adidData.mitAmt || 0;
+          }
         }
       }
     });
@@ -393,6 +424,9 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
       base.totalUndue = totalUndue;
       base.totalCurMthUnpaid = totalCurMthUnpaid;
       base.totalUnpaid = totalUnpaid;
+      if (filters && filters.mitType === "MIT") {
+        base.totalMITAmt = totalMITAmtStation;
+      }
     }
     return base;
   }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
@@ -407,14 +441,19 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
     grandTotal.totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
     grandTotal.totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
     grandTotal.totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
+    if (filters && filters.mitType === "MIT") {
+      grandTotal.totalMITAmt = totalMITAmt;
+    }
   }
 
   return { data, stationTotals, grandTotal };
 }
 
-function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = false) {
+// Table 5: By SMER Segment
+function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = false, filters = {}) {
   const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
   const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
+  const totalMITAmt = result.reduce((sum, row) => sum + (Number(row["MIT Amt"]) || 0), 0);
 
   // Group by business area
   const grouped = {};
@@ -437,6 +476,9 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = 
       grouped[businessArea].segments[row["SMER Segment"]].totalUndue = Number(row["Total Undue"]) || 0;
       grouped[businessArea].segments[row["SMER Segment"]].curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
       grouped[businessArea].segments[row["SMER Segment"]].totalUnpaid = Number(row["Total Unpaid"]) || 0;
+      if (filters && filters.mitType === "MIT") {
+        grouped[businessArea].segments[row["SMER Segment"]].mitAmt = Number(row["MIT Amt"]) || 0;
+      }
     }
   });
 
@@ -456,11 +498,15 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = 
         base.totalUndue = segment.totalUndue;
         base.curMthUnpaid = segment.curMthUnpaid;
         base.totalUnpaid = segment.totalUnpaid;
+        if (filters && filters.mitType === "MIT") {
+          base.mitAmt = segment.mitAmt || 0;
+        }
       }
       data.push(base);
     });
   });
 
+  // Station totals (optional, not usually needed for SMER, but can be added like others)
   // Grand total
   const grandTotal = {
     totalNumberOfAccounts: totalAccounts,
@@ -471,9 +517,41 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = 
     grandTotal.totalUndue = result.reduce((sum, row) => sum + Number(row["Total Undue"] || 0), 0);
     grandTotal.totalCurMthUnpaid = result.reduce((sum, row) => sum + Number(row["Cur.Mth Unpaid"] || 0), 0);
     grandTotal.totalUnpaid = result.reduce((sum, row) => sum + Number(row["Total Unpaid"] || 0), 0);
+    if (filters && filters.mitType === "MIT") {
+      grandTotal.totalMITAmt = totalMITAmt;
+    }
   }
 
   return { data, grandTotal };
+}
+
+// Table 6: Detailed Table Summary
+function formatDetailedTableSummary(result, getBusinessAreaName, isAgedDebtView = false, filters = {}) {
+  const formatted = result.map(row => {
+    const base = {
+      businessArea: String(row["Buss Area"]),
+      station: getBusinessAreaName(row["Buss Area"]),
+      contractAcc: String(row["Contract Acc"]),
+      contractAccountName: String(row["Contract Account Name"]),
+      adid: String(row["ADID"]),
+      accClass: String(row["Acc Class"]),
+      accStatus: String(row["Acc Status"]),
+      noOfMonthsOutstanding: Number(row["No of Months Outstanding"]),
+      staffId: String(row["Staff ID"]),
+      mitAmt: Number(row["MIT Amt"]),
+      lastPymtDate: String(row["Last Payment Date"]),
+      lastPymtAmt: Number(row["Last Payment Amount"]),
+      ttlOSAmt: Number(row["TTL O/S Amt"])
+    };
+    if (!isAgedDebtView) {
+      base.totalUndue = Number(row["Total Undue"]) || 0;
+      base.curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
+      base.totalUnpaid = Number(row["Total Unpaid"]) || 0;
+    }
+    return base;
+  });
+
+  return formatted.sort((a, b) => Number(b.ttlOSAmt) - Number(a.ttlOSAmt));
 }
 
 module.exports = {
@@ -487,6 +565,7 @@ module.exports = {
   formatAccountClassSummary,
   formatADIDSummary,
   formatSMERSegmentSummary,
+  formatDetailedTableSummary,
   formatPercent,
   sumFields
 };

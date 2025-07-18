@@ -33,9 +33,8 @@ router.get('/debt-by-adid/:filename', dataController.getAgedDebtSummaryByADID);
 router.get('/debt-by-staff/:filename', dataController.getAgedDebtSummaryByStaffID);
 // Process debt by SMER Segment
 router.get('/debt-by-smer-segment/:filename', dataController.getAgedDebtSummaryBySmerSegment);
-
-
-
+// Process debt detailed table - partial
+router.get('/detailed-table/:filename', dataController.getDetailedDebtTableData);
 
 
 

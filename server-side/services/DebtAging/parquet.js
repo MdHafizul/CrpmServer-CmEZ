@@ -12,8 +12,7 @@ const {
   formatAccountClassSummary,
   formatADIDSummary,
   formatSMERSegmentSummary,
-  formatPercent,
-  sumFields
+  formatDetailedTableSummary,
 } = require('../../utils/parquetHelper');
 
 // Initialize DuckDB connection
@@ -208,6 +207,7 @@ exports.processDebtByStationTR = async (parquetFilename, filters = {}) => {
   const query = `
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
       SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
@@ -217,9 +217,8 @@ exports.processDebtByStationTR = async (parquetFilename, filters = {}) => {
     WHERE ${whereClause}
     GROUP BY CAST("Buss Area" AS VARCHAR)
   `;
-
-  const result = await dbAll(query);
-  return formatStationSummary(result, getBusinessAreaName);
+const result = await dbAll(query);
+return formatStationSummary(result, getBusinessAreaName, false, filters);
 };
 
 // Aged Debt view
@@ -231,6 +230,7 @@ exports.processDebtByStationAgedDebt = async (parquetFilename, filters = {}) => 
   const query = `
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
@@ -239,7 +239,7 @@ exports.processDebtByStationAgedDebt = async (parquetFilename, filters = {}) => 
   `;
 
   const result = await dbAll(query);
-  return formatStationSummary(result, getBusinessAreaName, true); // <-- true for isAgedDebtView
+  return formatStationSummary(result, getBusinessAreaName, true, filters); 
 };
 
 //Table 2 - Summary Aged Debt By Acc Class
@@ -253,6 +253,7 @@ exports.processDebtByAccountClassTR = async (parquetFilename, filters = {}) => {
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
       SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
@@ -265,8 +266,8 @@ exports.processDebtByAccountClassTR = async (parquetFilename, filters = {}) => {
   `;
 
   const result = await dbAll(query);
-  const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
-  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder);
+  const accountClassOrder = ['LPCN', 'OPCN', 'LPCG', 'OPCG'];
+  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, false, filters);
 };
 
 // Aged Debt view
@@ -279,6 +280,7 @@ exports.processDebtByAccountClassAgedDebt = async (parquetFilename, filters = {}
     SELECT 
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
@@ -289,7 +291,7 @@ exports.processDebtByAccountClassAgedDebt = async (parquetFilename, filters = {}
 
   const result = await dbAll(query);
   const accountClassOrder = ['OPCN', 'LPCN', 'LPCG', 'OPCG'];
-  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, true);
+  return formatAccountClassSummary(result, getBusinessAreaName, accountClassOrder, true, filters);
 };
 
 
@@ -305,6 +307,7 @@ exports.processDebtByADIDTR = async (parquetFilename, filters = {}) => {
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("ADID" AS VARCHAR) AS "ADID",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
       SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
@@ -317,7 +320,7 @@ exports.processDebtByADIDTR = async (parquetFilename, filters = {}) => {
 
   const result = await dbAll(query);
   const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  return formatADIDSummary(result, getBusinessAreaName, adidOrder);
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder, false , filters);
 };
 // Aged Debt view
 exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
@@ -330,6 +333,7 @@ exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("ADID" AS VARCHAR) AS "ADID",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
     WHERE ${whereClause}
@@ -339,7 +343,7 @@ exports.processDebtByADIDAgedDebt = async (parquetFilename, filters = {}) => {
 
   const result = await dbAll(query);
   const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-  return formatADIDSummary(result, getBusinessAreaName, adidOrder, true); // <-- true for isAgedDebtView
+  return formatADIDSummary(result, getBusinessAreaName, adidOrder, true,filters); // <-- true for isAgedDebtView
 };
 
 //Table 4 - Staff Debt
@@ -461,6 +465,7 @@ exports.processDebtBySmerSegmentTR = async (parquetFilename, filters = {}) => {
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       SUM(CAST("Total Undue" AS DOUBLE)) AS "Total Undue",
       SUM(CAST("Cur.MthUnpaid" AS DOUBLE)) AS "Cur.Mth Unpaid",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
@@ -472,7 +477,7 @@ exports.processDebtBySmerSegmentTR = async (parquetFilename, filters = {}) => {
   `;
 
   const result = await dbAll(query);
-  return formatSMERSegmentSummary(result, getBusinessAreaName, false);
+  return formatSMERSegmentSummary(result, getBusinessAreaName, false, filters);
 };
 // Aged Debt view
 exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {}) => {
@@ -485,6 +490,7 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
       CAST("Buss Area" AS VARCHAR) AS "Buss Area",
       CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts",
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS "MIT Amt",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt"
     FROM read_parquet('${normalizedPath}')
     WHERE ${whereClause}
@@ -493,28 +499,115 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
   `;
 
   const result = await dbAll(query);
-  return formatSMERSegmentSummary(result, getBusinessAreaName, true);
+  return formatSMERSegmentSummary(result, getBusinessAreaName, true , filters); 
 };
 
+//Table 6 - Detailed Table for Aged Debt(FULL AND PARTIAL)
 
+// TR View - partial
+exports.processDetailedDebtTableDataTR = async (
+  parquetFilename,
+  filters = {},
+  { cursor = null, limit = 100, sortField = "TTL O/S Amt", sortDirection = "ASC" } = {}
+) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
 
+  let query = `
+    SELECT
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("Contract Acc" AS VARCHAR) AS "Contract Acc",
+      CAST("Contract Account Name" AS VARCHAR) AS "Contract Account Name",
+      CAST("ADID" AS VARCHAR) AS "ADID",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      CAST("Acc Status" AS VARCHAR) AS "Acc Status",
+      CAST("No of Months Outstandings" AS DOUBLE) AS "No of Months Outstanding",
+      CAST("Staff ID" AS VARCHAR) AS "Staff ID",
+      CAST("MIT Amt" AS DOUBLE) AS "MIT Amt",
+      CAST("Last PymtDate" AS VARCHAR) AS "Last Payment Date",
+      CAST("Last Pymt Amt" AS DOUBLE) AS "Last Payment Amount",
+      CAST("TTL O/S Amt" AS DOUBLE) AS "TTL O/S Amt",
+      CAST("Total Undue" AS DOUBLE) AS "Total Undue",
+      CAST("Cur.MthUnpaid" AS DOUBLE) AS "Cur.Mth Unpaid",
+      CAST("Total Unpaid" AS DOUBLE) AS "Total Unpaid"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+  `;
 
+  if (cursor) {
+    const operator = sortDirection.toUpperCase() === "ASC" ? ">" : "<";
+    query += ` AND "${sortField}" ${operator} '${cursor}'`;
+  }
 
+  query += ` ORDER BY "${sortField}" ${sortDirection.toUpperCase()} LIMIT ${parseInt(limit) + 1}`;
 
+  const result = await dbAll(query);
 
+  const hasMore = result.length > limit;
+  const items = hasMore ? result.slice(0, limit) : result;
+  const nextCursor = hasMore ? items[items.length - 1][sortField] : null;
 
+  return {
+    items: formatDetailedTableSummary(items, getBusinessAreaName, false, filters),
+    pagination: {
+      hasMore,
+      nextCursor,
+      limit: parseInt(limit)
+    }
+  };
+};
 
+// Aged Debt View - partial
+exports.processDetailedDebtTableDataAgedDebt = async (
+  parquetFilename,
+  filters = {},
+  { cursor = null, limit = 100, sortField = "Contract Acc", sortDirection = "ASC" } = {}
+) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const whereClause = buildWhereClauses(filters);
 
+  let query = `
+    SELECT
+      CAST("Buss Area" AS VARCHAR) AS "Buss Area",
+      CAST("Contract Acc" AS VARCHAR) AS "Contract Acc",
+      CAST("Contract Account Name" AS VARCHAR) AS "Contract Account Name",
+      CAST("ADID" AS VARCHAR) AS "ADID",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      CAST("Acc Status" AS VARCHAR) AS "Acc Status",
+      CAST("No of Months Outstandings" AS DOUBLE) AS "No of Months Outstanding",
+      CAST("Staff ID" AS VARCHAR) AS "Staff ID",
+      CAST("MIT Amt" AS DOUBLE) AS "MIT Amt",
+      CAST("Last PymtDate" AS VARCHAR) AS "Last Payment Date",
+      CAST("Last Pymt Amt" AS DOUBLE) AS "Last Payment Amount",
+      CAST("TTL O/S Amt" AS DOUBLE) AS "TTL O/S Amt"
+    FROM read_parquet('${normalizedPath}')
+    WHERE ${whereClause}
+  `;
 
+  if (cursor) {
+    const operator = sortDirection.toUpperCase() === "ASC" ? ">" : "<";
+    query += ` AND "${sortField}" ${operator} '${cursor}'`;
+  }
 
+  query += ` ORDER BY "${sortField}" ${sortDirection.toUpperCase()} LIMIT ${parseInt(limit) + 1}`;
 
+  const result = await dbAll(query);
 
+  const hasMore = result.length > limit;
+  const items = hasMore ? result.slice(0, limit) : result;
+  const nextCursor = hasMore ? items[items.length - 1][sortField] : null;
 
-
-
-
-
-
+  return {
+    items: formatDetailedTableSummary(items, getBusinessAreaName, true, filters),
+    pagination: {
+      hasMore,
+      nextCursor,
+      limit: parseInt(limit)
+    }
+  };
+};
 
 //Function to return all data
 exports.getAllDataFromParquet = async (parquetFilename, { cursor = null, limit = null, sortField = "Contract Acc", sortDirection = "ASC" } = {}) => {
