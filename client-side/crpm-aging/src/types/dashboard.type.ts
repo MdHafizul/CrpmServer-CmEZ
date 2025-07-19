@@ -89,3 +89,44 @@ export interface DebtByStationRow {
   totalUnpaid: number;
   mitAmt: number;
 }
+
+export interface DebtByAccountClassRow {
+  businessArea: string;
+  station: string;
+  accountClass: string;
+  numberOfAccounts: number;
+  ttlOSAmt: number;
+  percentOfTotal: string;
+  totalUndue: number;
+  curMthUnpaid: number;
+  totalUnpaid: number;
+  mitAmt: number;
+}
+
+export interface DebtByAccountClassApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    data: DebtByAccountClassRow[];
+    stationTotals: Array<{
+      businessArea: string;
+      station: string;
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    }>;
+    grandTotal: {
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    };
+  };
+}

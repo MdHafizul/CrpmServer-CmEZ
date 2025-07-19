@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
-import type { SummaryCardApiResponse, FilterOptions, DebtByStationApiResponse } from '../types/dashboard.type';
-import { getSummaryCardData, getDebtByStationData } from '../services/api';
+import type { SummaryCardApiResponse, FilterOptions, DebtByStationApiResponse,DebtByAccountClassApiResponse } from '../types/dashboard.type';
+import { getSummaryCardData, getDebtByStationData, getDebtByAccountClassData } from '../services/api';
 
 interface AppContextType {
   summaryCardData: SummaryCardApiResponse['data'] | null;
@@ -12,6 +12,23 @@ interface AppContextType {
   filters: FiltersType;
   debtByStationData: DebtByStationApiResponse['data'] | null;
   fetchDebtByStation: (
+    filename: string,
+    params: {
+      viewType: 'TR' | 'agedDebt';
+      accClassType: 'GOVERNMENT' | 'NON_GOVERNMENT' | 'ALL';
+      mitType: 'MIT' | 'NON_MIT' | 'ALL';
+      businessAreas?: string[];
+      adids?: string[];
+      accStatus?: string | null;
+      balanceType?: string | null;
+      accountClass?: string;
+      agingBucket?: string | null;
+      totalOutstandingRange?: string | null;
+      smerSegments?: string[];
+    }
+  ) => Promise<void>;
+  debtByAccountClassData: DebtByAccountClassApiResponse['data'] | null;
+  fetchDebtByAccountClass: (
     filename: string,
     params: {
       viewType: 'TR' | 'agedDebt';
@@ -98,7 +115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [monthsOutstandingBracket, setMonthsOutstandingBracket] = useState('');
   const [smerSegments, setSmerSegments] = useState<string[]>([]);
   const [debtByStationData, setDebtByStationData] = useState<DebtByStationApiResponse['data'] | null>(null);
-
+  const [debtByAccountClassData, setDebtByAccountClassData] = useState<DebtByAccountClassApiResponse['data'] | null>(null);
 
   // State for summary card data and related properties
   const [summaryCardData, setSummaryCardData] = useState<SummaryCardApiResponse['data'] | null>(null);
@@ -127,19 +144,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoading(true);
     setError(null);
     try {
-      console.log('fetchDebtByStation params:', params);
       // Correct: send params as POST body, not as { params }
       const result = await getDebtByStationData(filename, params);
-      console.log('fetchDebtByStation result:', result);
       setDebtByStationData(result.data);
     } catch (err: any) {
-      console.error('fetchDebtByStation error:', err);
       setError(err?.message || 'Failed to fetch debt by station');
       setDebtByStationData(null);
     } finally {
       setLoading(false);
     }
   };
+
+  const fetchDebtByAccountClass = async (
+    filename: string,
+    params: {
+      viewType: 'TR' | 'agedDebt';
+      accClassType: 'GOVERNMENT' | 'NON_GOVERNMENT' | 'ALL';
+      mitType: 'MIT' | 'NON_MIT' | 'ALL';
+      businessAreas?: string[];
+      adids?: string[];
+      accStatus?: string | null;
+      balanceType?: string | null;
+      accountClass?: string;
+      agingBucket?: string | null;
+      totalOutstandingRange?: string | null;
+      smerSegments?: string[];
+    }
+  ) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getDebtByAccountClassData(filename, params);
+      setDebtByAccountClassData(result.data);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to fetch debt by account class');
+      setDebtByAccountClassData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Filter options
   const businessAreaOptions: FilterOptions[] = [
     { value: 'all', label: 'All Business Areas' },
@@ -301,6 +345,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       filters,
       debtByStationData,
       fetchDebtByStation,
+      debtByAccountClassData,
+      fetchDebtByAccountClass,
     }}>
       {children}
     </AppContext.Provider>

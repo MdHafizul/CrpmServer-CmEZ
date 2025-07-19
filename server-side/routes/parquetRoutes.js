@@ -12,7 +12,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 900 * 1024 * 1024 } // 900MB limit
 });
@@ -26,7 +26,7 @@ router.get('/summary-card/:filename', dataController.getSummaryCardData);
 // Process debt by station
 router.post('/debt-by-station/:filename', dataController.getAgedDebtByStationData);
 // Process debt by account class
-router.get('/debt-by-account-class/:filename', dataController.getAgedDebtByAccountClassData);
+router.post('/debt-by-account-class/:filename', dataController.getAgedDebtByAccountClassData);
 // Process debt by ADID
 router.get('/debt-by-adid/:filename', dataController.getAgedDebtSummaryByADID);
 // Process debt by staffID

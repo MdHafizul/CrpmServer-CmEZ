@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { SummaryCardApiResponse, UploadResponse } from '../types/dashboard.type';
+import type { SummaryCardApiResponse, UploadResponse, DebtByAccountClassApiResponse } from '../types/dashboard.type';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -26,9 +26,13 @@ export const getSummaryCardData = async (filename: string): Promise<SummaryCardA
 //Function to fetch SummaryAgedDebtData by station with filters
 export const getDebtByStationData = async (filename: string, body: any) => {
   const url = `${API_BASE_URL}/api/v2/crpm/debt-by-station/${encodeURIComponent(filename)}`;
-  console.log('getDebtByStationData url:', url);
-  console.log('getDebtByStationData body:', body);
   const response = await axios.post(url, body); 
-  console.log('getDebtByStationData response:', response.data);
   return response.data;
 };
+
+
+export const getDebtByAccountClassData = async (filename: string , body:any) =>{
+  const url = `${API_BASE_URL}/api/v2/crpm/debt-by-account-class/${encodeURIComponent(filename)}`;
+  const response = await axios.post<DebtByAccountClassApiResponse>(url, body);
+  return response.data;
+}

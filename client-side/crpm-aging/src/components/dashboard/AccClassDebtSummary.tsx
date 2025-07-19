@@ -42,111 +42,36 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
   viewType = 'agedDebt',
   filters,
 }) => {
-  // Local state for expanded data
-  const [expandedData, setExpandedData] = useState<AccClassDebtSummaryData[]>([]);
-  
-  // Expand data to have all four account classes per business area
-  React.useEffect(() => {
-    if (data.length > 0) {
-      // Group by business area and station
-      const businessAreas = new Map<string, { businessArea: string, station: string }>();
-      
-      data.forEach(item => {
-        businessAreas.set(item.businessArea, {
-          businessArea: item.businessArea,
-          station: item.station
-        });
-      });
-      
-      // Create expanded dataset with all four account classes per business area
-      const expanded: AccClassDebtSummaryData[] = [];
-      
-      // Account class definitions with their types
-      const accountClasses = [
-        { code: 'LPCG', type: 'government' as const },
-        { code: 'OPCG', type: 'government' as const },
-        { code: 'LPCN', type: 'non-government' as const },
-        { code: 'OPCN', type: 'non-government' as const }
-      ];
-      
-      // For each business area, create entries for all account classes
-      businessAreas.forEach((area) => {
-        accountClasses.forEach(accClass => {
-          // Find existing data for this business area and account class
-          const existingData = data.find(item => 
-            item.businessArea === area.businessArea && 
-            item.accClass === accClass.code
-          );
-          
-          // If data exists, use it; otherwise create a new entry with random values
-          if (existingData) {
-            expanded.push({
-              ...existingData,
-              type: accClass.type
-            });
-          } else {
-            expanded.push({
-              businessArea: area.businessArea,
-              station: area.station,
-              numOfAccounts: Math.floor(Math.random() * 500) + 50,
-              debtAmount: Math.floor(Math.random() * 200000) + 10000,
-              accClass: accClass.code,
-              type: accClass.type,
-              // Generate random values for Trade Receivable view fields
-              totalUndue: Math.floor(Math.random() * 50000) + 5000,
-              curMthUnpaid: Math.floor(Math.random() * 40000) + 3000,
-              ttlOsAmt: Math.floor(Math.random() * 200000) + 10000,
-              totalUnpaid: Math.floor(Math.random() * 90000) + 8000
-            });
-          }
-        });
-      });
-      
-      setExpandedData(expanded);
-    }
-  }, [data]);
-
   // Filter data based on governmentType and accClass filters
   const filteredData = useMemo(() => {
-    if (!expandedData.length) return [];
-    
-    let filtered = [...expandedData];
-    
-    // Apply government type filter
+    if (!data.length) return [];
+    let filtered = [...data];
     if (filters.governmentType === 'government') {
-      filtered = filtered.filter(item => 
-        item.accClass?.endsWith('G') || 
-        item.type === 'government'
+      filtered = filtered.filter(item =>
+        item.accClass?.endsWith('G')
       );
     } else if (filters.governmentType === 'non-government') {
-      filtered = filtered.filter(item => 
-        item.accClass?.endsWith('N') || 
-        item.type === 'non-government'
+      filtered = filtered.filter(item =>
+        item.accClass?.endsWith('N')
       );
     }
-    
-    // Apply account class filter if available
     if (filters.accClass && filters.accClass !== 'all') {
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         item.accClass === filters.accClass
       );
     }
-    
     return filtered;
-  }, [expandedData, filters.governmentType, filters.accClass]);
+  }, [data, filters.governmentType, filters.accClass]);
 
-  // Calculate summary totals for each business area across filtered account classes
+  // Calculate summary totals for each business area
   const businessAreaSummary = useMemo(() => {
     const summary = new Map<string, AccClassDebtSummaryData>();
-    
     filteredData.forEach(item => {
       const key = item.businessArea;
       const existing = summary.get(key);
-      
       if (existing) {
         existing.numOfAccounts += item.numOfAccounts;
         existing.debtAmount += item.debtAmount;
-        // Add Trade Receivable fields to the totals
         existing.totalUndue = (existing.totalUndue || 0) + (item.totalUndue || 0);
         existing.curMthUnpaid = (existing.curMthUnpaid || 0) + (item.curMthUnpaid || 0);
         existing.ttlOsAmt = (existing.ttlOsAmt || 0) + (item.ttlOsAmt || 0);
@@ -158,15 +83,13 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
           numOfAccounts: item.numOfAccounts,
           debtAmount: item.debtAmount,
           accClass: 'Total',
-          // Include Trade Receivable fields
           totalUndue: item.totalUndue || 0,
           curMthUnpaid: item.curMthUnpaid || 0,
           ttlOsAmt: item.ttlOsAmt || 0,
-          totalUnpaid: item.totalUnpaid || 0
+          totalUnpaid: item.totalUnpaid || 0,
         });
       }
     });
-    
     return Array.from(summary.values());
   }, [filteredData]);
 

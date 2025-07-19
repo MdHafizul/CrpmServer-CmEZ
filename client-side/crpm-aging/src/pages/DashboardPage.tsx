@@ -4,6 +4,7 @@ import Layout from '../components/layout/Layout';
 import { SummaryCardsContainer } from '../components/dashboard/SummaryCard';
 import FilterSection from '../components/dashboard/FilterSection';
 import DebtByStationTable from '../components/dashboard/DebtByStationTable';
+import AccClassDebtSummary from '../components/dashboard/AccClassDebtSummary';
 
 const DashboardPage: React.FC = () => {
   const { 
@@ -12,7 +13,9 @@ const DashboardPage: React.FC = () => {
     fetchSummaryCard,
     debtByStationData,
     fetchDebtByStation,
-    loading
+    loading,
+    debtByAccountClassData,
+    fetchDebtByAccountClass
   } = useAppContext();
   
   useEffect(() => {
@@ -41,7 +44,6 @@ useEffect(() => {
     totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
     smerSegments: filters.smerSegments,
   };
-  console.log('DashboardPage filter params:', apiParams);
   fetchDebtByStation('1750132052464-aging besar.parquet', apiParams);
   // eslint-disable-next-line
 }, [
@@ -70,7 +72,61 @@ useEffect(() => {
         totalUnpaid: row.totalUnpaid,
       }))
     : [];
-console.log('DebtByStationTable tableData:', tableData);
+
+  useEffect(() => {
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' as 'TR' : 'agedDebt' as 'agedDebt',
+      accClassType: filters.governmentType === 'government'
+        ? 'GOVERNMENT' as 'GOVERNMENT'
+        : filters.governmentType === 'non-government'
+        ? 'NON_GOVERNMENT' as 'NON_GOVERNMENT'
+        : 'ALL' as 'ALL',
+      mitType: filters.mitFilter === 'mit'
+        ? 'MIT' as 'MIT'
+        : filters.mitFilter === 'non-mit'
+        ? 'NON_MIT' as 'NON_MIT'
+        : 'ALL' as 'ALL',
+      businessAreas: filters.businessAreas,
+      adids: filters.accDefinitions,
+      accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
+      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      smerSegments: filters.smerSegments,
+    };
+    fetchDebtByAccountClass('1750132052464-aging besar.parquet', apiParams);
+    // eslint-disable-next-line
+  }, [
+    filters.viewType,
+    filters.governmentType,
+    filters.mitFilter,
+    filters.businessAreas,
+    filters.accDefinitions,
+    filters.accStatus,
+    filters.netPositiveBalance,
+    filters.accClass,
+    filters.monthsOutstandingBracket,
+    filters.debtRange,
+    filters.smerSegments
+  ]);
+
+    // Map API data for AccClassDebtSummary
+  const accClassSummaryData = debtByAccountClassData?.data
+    ? debtByAccountClassData.data.map(row => ({
+        businessArea: row.businessArea,
+        station: row.station,
+        accClass: row.accountClass,
+        numOfAccounts: row.numberOfAccounts,
+        debtAmount: row.ttlOSAmt,
+        totalUndue: row.totalUndue,
+        curMthUnpaid: row.curMthUnpaid,
+        ttlOsAmt: row.ttlOSAmt,
+        totalUnpaid: row.totalUnpaid,
+        mitAmt: row.mitAmt,
+        percentage: parseFloat(row.percentOfTotal),
+      }))
+    : [];
 
   return (
     <Layout>
@@ -122,6 +178,18 @@ console.log('DebtByStationTable tableData:', tableData);
             businessArea: filters.businessArea,
             onBusinessAreaChange: filters.setBusinessArea,
             businessAreaOptions: filters.businessAreaOptions,
+          }}
+        />
+         <AccClassDebtSummary
+          data={accClassSummaryData}
+          loading={loading}
+          viewType={filters.viewType}
+          onViewTypeChange={filters.setViewType}
+          filters={{
+            governmentType: filters.governmentType,
+            onGovernmentTypeChange: filters.setGovernmentType,
+            governmentTypeOptions: filters.governmentTypeOptions,
+            accClass: filters.accClass,
           }}
         />
       </div>
