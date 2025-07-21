@@ -1,53 +1,127 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import { getDebtByAccountClassData } from '../../services/api';
+import type { DebtByAccountClassRow } from '../../types/dashboard.type';
 
-interface AccClassDebtSummaryData {
-  businessArea: string;
-  station: string;
-  numOfAccounts: number;
-  debtAmount: number;
-  accClass?: string;
-  type?: 'government' | 'non-government';
-  totalUndue?: number;
-  curMthUnpaid?: number;
-  ttlOsAmt?: number;
-  totalUnpaid?: number;
-  percentage?: number;
+interface AccClassDebtSummaryData extends DebtByAccountClassRow {
   isTotal?: boolean;
   isGrandTotal?: boolean;
+  percentage?: number;
 }
 
 interface AccClassDebtSummaryProps {
-  data: AccClassDebtSummaryData[];
-  loading?: boolean;
-  viewType: 'tradeReceivable' | 'agedDebt';
-  onViewTypeChange: (viewType: 'tradeReceivable' | 'agedDebt') => void;
-  filters: {
-    governmentType: string;
-    onGovernmentTypeChange: (value: string) => void;
-    governmentTypeOptions: { value: string; label: string }[];
-    accClass?: string;
-  };
+  filters: any;
 }
 
-const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
-  data,
-  loading = false,
-  viewType = 'agedDebt',
-  filters,
-}) => {
+const FILENAME = '1750132052464-aging besar.parquet';
+
+const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) => {
+  const [data, setData] = useState<AccClassDebtSummaryData[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
+      accClassType:
+        filters.governmentType === 'government'
+          ? 'GOVERNMENT'
+          : filters.governmentType === 'non-government'
+          ? 'NON_GOVERNMENT'
+          : 'ALL',
+      mitType:
+        filters.mitFilter === 'mit'
+          ? 'MIT'
+          : filters.mitFilter === 'non-mit'
+          ? 'NON_MIT'
+          : 'ALL',
+      businessAreas: filters.businessAreas,
+      adids: filters.accDefinitions,
+      accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
+      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      smerSegments: filters.smerSegments,
+    };
+    getDebtByAccountClassData(FILENAME, apiParams)
+      .then(res => {
+        // Map API data to table data structure as before
+        const d = res.data?.data || [];
+        const stationTotals = res.data?.stationTotals || [];
+        const grandTotal = res.data?.grandTotal;
+        const mapped = [
+          ...d.map(row => ({
+            businessArea: row.businessArea,
+            station: row.station,
+            accountClass: row.accountClass,
+            numberOfAccounts: row.numberOfAccounts,
+            ttlOSAmt: row.ttlOSAmt,
+            percentOfTotal: row.percentOfTotal,
+            totalUndue: row.totalUndue,
+            curMthUnpaid: row.curMthUnpaid,
+            totalUnpaid: row.totalUnpaid,
+            mitAmt: row.mitAmt,
+            percentage: parseFloat(row.percentOfTotal),
+          })),
+          ...stationTotals.map(stationTotal => ({
+            businessArea: stationTotal.businessArea,
+            station: stationTotal.station,
+            accountClass: 'Total',
+            numberOfAccounts: stationTotal.totalNumberOfAccounts,
+            ttlOSAmt: stationTotal.totalTtlOSAmt,
+            percentOfTotal: stationTotal.totalPercentOfTotal,
+            totalUndue: stationTotal.totalUndue,
+            curMthUnpaid: stationTotal.totalCurMthUnpaid,
+            totalUnpaid: stationTotal.totalUnpaid,
+            mitAmt: stationTotal.totalMITAmt,
+            percentage: parseFloat(stationTotal.totalPercentOfTotal),
+            isTotal: true,
+          })),
+          grandTotal && {
+            businessArea: 'Grand Total',
+            station: '',
+            accountClass: 'Total',
+            numberOfAccounts: grandTotal.totalNumberOfAccounts,
+            ttlOSAmt: grandTotal.totalTtlOSAmt,
+            percentOfTotal: grandTotal.totalPercentOfTotal,
+            totalUndue: grandTotal.totalUndue,
+            curMthUnpaid: grandTotal.totalCurMthUnpaid,
+            totalUnpaid: grandTotal.totalUnpaid,
+            mitAmt: grandTotal.totalMITAmt,
+            percentage: parseFloat(grandTotal.totalPercentOfTotal),
+            isGrandTotal: true,
+          },
+        ].filter(Boolean);
+        setData(mapped);
+      })
+      .finally(() => setLoading(false));
+  }, [
+    filters.viewType,
+    filters.governmentType,
+    filters.mitFilter,
+    filters.businessAreas,
+    filters.accDefinitions,
+    filters.accStatus,
+    filters.netPositiveBalance,
+    filters.accClass,
+    filters.monthsOutstandingBracket,
+    filters.debtRange,
+    filters.smerSegments,
+  ]);
+
   // Use API response directly, optionally filter by frontend filters if needed
   const filteredData = React.useMemo(() => {
     if (!data?.length) return [];
     let filtered = [...data];
     if (filters.governmentType === 'government') {
-      filtered = filtered.filter(item => item.accClass?.endsWith('G'));
+      filtered = filtered.filter(item => item.accountClass?.endsWith('G'));
     } else if (filters.governmentType === 'non-government') {
-      filtered = filtered.filter(item => item.accClass?.endsWith('N'));
+      filtered = filtered.filter(item => item.accountClass?.endsWith('N'));
     }
     if (filters.accClass && filters.accClass !== 'all') {
-      filtered = filtered.filter(item => item.accClass === filters.accClass);
+      filtered = filtered.filter(item => item.accountClass === filters.accClass);
     }
     return filtered;
   }, [data, filters.governmentType, filters.accClass]);
@@ -63,16 +137,18 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
 
     // Find total rows (isTotal === true) and move them to the end of each group
     const result: AccClassDebtSummaryData[] = [];
-    Object.entries(groups).forEach(([key, rows]) => {
+    Object.entries(groups).forEach(([, rows]) => {
       // Account class rows (not total)
-      rows.filter(r => !r.isTotal && !r.isGrandTotal).forEach((row, idx) => {
-        // Only show businessArea/station for first row in group
-        result.push({
-          ...row,
-          businessArea: idx === 0 ? row.businessArea : '',
-          station: idx === 0 ? row.station : '',
+      rows
+        .filter(r => !r.isTotal && !r.isGrandTotal)
+        .forEach((row, idx) => {
+          // Only show businessArea/station for first row in group
+          result.push({
+            ...row,
+            businessArea: idx === 0 ? row.businessArea : '',
+            station: idx === 0 ? row.station : '',
+          });
         });
-      });
       // Total row for the group
       rows.filter(r => r.isTotal).forEach(totalRow => {
         result.push({
@@ -100,7 +176,7 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
           return <span className="font-medium text-blue-600">{value} Total</span>;
         }
         return <span className="font-medium text-gray-900">{value}</span>;
-      }
+      },
     },
     {
       header: 'Station',
@@ -108,11 +184,11 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
       cell: (value: string, row: AccClassDebtSummaryData) => {
         if (row.isGrandTotal || row.isTotal) return null;
         return <span className="text-gray-700">{value}</span>;
-      }
+      },
     },
     {
       header: 'Account Class',
-      accessor: 'accClass',
+      accessor: 'accountClass',
       cell: (value: string, row: AccClassDebtSummaryData) => {
         if (row.isGrandTotal) {
           return <span className="font-bold text-lg text-blue-600">{value}</span>;
@@ -121,20 +197,28 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
           return <span className="font-bold text-blue-600">Total</span>;
         }
         return (
-          <span className={`font-medium ${value?.endsWith('G') ? 'text-blue-600' : 'text-pink-600'}`}>
+          <span
+            className={`font-medium ${
+              value?.endsWith('G') ? 'text-blue-600' : 'text-pink-600'
+            }`}
+          >
             {value || '-'}
           </span>
         );
-      }
+      },
     },
     {
       header: 'Number of Accounts',
-      accessor: 'numOfAccounts',
+      accessor: 'numberOfAccounts',
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`font-medium ${row.isTotal ? 'font-bold text-blue-600' : ''} ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}>
+        <span
+          className={`font-medium ${
+            row.isTotal ? 'font-bold text-blue-600' : ''
+          } ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}
+        >
           {value?.toLocaleString()}
         </span>
-      )
+      ),
     },
   ];
 
@@ -144,50 +228,86 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({
       accessor: 'totalUndue',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`font-medium ${row.isGrandTotal || row.isTotal ? 'text-blue-600 font-bold' : 'text-blue-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        <span
+          className={`font-medium ${
+            row.isGrandTotal || row.isTotal ? 'text-blue-600 font-bold' : 'text-blue-600'
+          } ${row.isGrandTotal ? 'text-lg' : ''}`}
+        >
+          RM{' '}
+          {value?.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) || '0.00'}
         </span>
-      )
+      ),
     },
     {
       header: 'Cur.Mth Unpaid',
       accessor: 'curMthUnpaid',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`font-medium ${row.isGrandTotal || row.isTotal ? 'text-blue-600 font-bold' : 'text-orange-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        <span
+          className={`font-medium ${
+            row.isGrandTotal || row.isTotal ? 'text-blue-600 font-bold' : 'text-orange-600'
+          } ${row.isGrandTotal ? 'text-lg' : ''}`}
+        >
+          RM{' '}
+          {value?.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) || '0.00'}
         </span>
-      )
+      ),
     },
     {
       header: 'TTL O/S Amt',
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        <span
+          className={`${
+            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'
+          } ${row.isGrandTotal ? 'text-lg' : ''}`}
+        >
+          RM{' '}
+          {value?.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) || '0.00'}
         </span>
-      )
+      ),
     },
     {
       header: 'Total Unpaid',
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        <span
+          className={`${
+            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'
+          } ${row.isGrandTotal ? 'text-lg' : ''}`}
+        >
+          RM{' '}
+          {value?.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }) || '0.00'}
         </span>
-      )
+      ),
     },
     {
       header: '% of Total',
       accessor: 'percentage',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-medium text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
+        <span
+          className={`${
+            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-medium text-gray-900'
+          } ${row.isGrandTotal ? 'text-lg' : ''}`}
+        >
           {value?.toFixed(2)}%
         </span>
-      )
+      ),
     },
   ];
 

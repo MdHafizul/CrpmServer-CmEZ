@@ -59,3 +59,9 @@ export const getDebtBySmerSegmentData = async (
   const response = await axios.post<DebtBySmerSegmentApiResponse>(url, body);
   return response.data;
 };
+
+export const getDriverTreeSummary = async (filename: string) => {
+  const url = `${API_BASE_URL}/api/v2/crpm/driver-tree-summary/${encodeURIComponent(filename)}`;
+  const response = await axios.post(url);
+  return response.data;
+};

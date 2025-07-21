@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import Card from '../ui/Card';
 import { formatCurrency } from '../../utils/formatter';
+import { getSummaryCardData } from '../../services/api';
 
 interface PieChartData {
   name: string;
@@ -62,7 +63,6 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     return null;
   };
 
-  // Custom label component for the percentage indicators with arrows
   const renderCustomizedLabel = (props: any) => {
     const { cx, cy, midAngle, innerRadius, outerRadius, percent, index } = props;
     const RADIAN = Math.PI / 180;
@@ -102,7 +102,6 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     );
   };
 
-  // Chart renderer - only pie chart
   const renderChart = () => {
     const chartData = data;
     if (!chartData.length) {
@@ -251,12 +250,20 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   );
 };
 
-interface SummaryCardsContainerProps {
-  summaryData: any;
-}
+export const SummaryCardsContainer: React.FC = () => {
+  const [summaryData, setSummaryData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const FILENAME = '1750132052464-aging besar.parquet';
 
-export const SummaryCardsContainer: React.FC<SummaryCardsContainerProps> = ({ summaryData }) => {
-  if (!summaryData) {
+  useEffect(() => {
+    setLoading(true);
+    getSummaryCardData(FILENAME)
+      .then(res => setSummaryData(res.data))
+      .catch(() => setSummaryData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading || !summaryData) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {[1, 2, 3].map(i => (
@@ -332,7 +339,7 @@ export const SummaryCardsContainer: React.FC<SummaryCardsContainerProps> = ({ su
       color: '#059669'
     }
   ];
-  const totalTradeReceivableValue = TotalTradeReceivable
+  const totalTradeReceivableValue = TotalTradeReceivable;
   const totalTradeReceivableAccounts = TotalNoOfAccTR;
 
   // Card 2: Total Aged Debt by Status (Active + Inactive)
@@ -363,7 +370,7 @@ export const SummaryCardsContainer: React.FC<SummaryCardsContainerProps> = ({ su
     },
     {
       name: 'Negative Balance',
-      value: Math.abs(negativeBalance), // Show as positive in chart
+      value: Math.abs(negativeBalance),
       numOfAcc: negativeBalanceNumOfAccounts,
       color: '#EF4444'
     },

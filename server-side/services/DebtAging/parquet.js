@@ -13,6 +13,8 @@ const {
   formatADIDSummary,
   formatSMERSegmentSummary,
   formatDetailedTableSummary,
+  formatDriverTreeSummary,
+  formatDirectedGraphSummary,
 } = require('../../utils/parquetHelper');
 
 // Initialize DuckDB connection
@@ -500,11 +502,12 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
   `;
 
   const result = await dbAll(query);
-  return formatSMERSegmentSummary(result, getBusinessAreaName, true, filters);
+  
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'GNLA','BLANKS'];
+  return formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, true, filters);
 };
 
 //Table 6 - Detailed Table for Aged Debt(FULL AND PARTIAL)
-
 // TR View - partial
 exports.processDetailedDebtTableDataTR = async (
   parquetFilename,
@@ -714,3 +717,73 @@ exports.getAllDataFromParquet = async (parquetFilename, { cursor = null, limit =
     }
   };
 }
+
+
+/*
+@TITLE : Functions for All Graphs
+@DESC : Function to calculate and return graph data for Driver Tree and Directed Graph
+@access : Public
+@route : POST /api/v2/crpm/{{tableName}}/:filename
+*/
+exports.getDriverTreeSummary = async (parquetFilename) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+
+  // Root node: Positive Balance
+  const rootQuery = `
+    SELECT
+      SUM(CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) > 0 THEN CAST("TTL O/S Amt" AS DOUBLE) ELSE 0 END) AS PositiveBalance,
+      COUNT(DISTINCT CASE WHEN CAST("TTL O/S Amt" AS DOUBLE) > 0 THEN "Contract Acc" ELSE NULL END) AS TotalNoOfAccPositiveBalance
+    FROM read_parquet('${normalizedPath}')
+  `;
+  const [root] = await dbAll(rootQuery);
+
+  // Level 2/3: Status + Account Class (positive only)
+  const statusClassQuery = `
+    SELECT
+      CAST("Acc Status" AS VARCHAR) AS "Acc Status",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts"
+    FROM read_parquet('${normalizedPath}')
+    WHERE CAST("TTL O/S Amt" AS DOUBLE) > 0
+    GROUP BY "Acc Status", "Acc Class"
+    ORDER BY "Acc Status", "Acc Class"
+  `;
+  const statusClassRows = await dbAll(statusClassQuery);
+
+  // Level 4: ADID per Account Class (positive only)
+  const adidQuery = `
+    SELECT
+      CAST("Acc Status" AS VARCHAR) AS "Acc Status",
+      CAST("Acc Class" AS VARCHAR) AS "Acc Class",
+      CAST("ADID" AS VARCHAR) AS "ADID",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts"
+    FROM read_parquet('${normalizedPath}')
+    WHERE CAST("TTL O/S Amt" AS DOUBLE) > 0
+    GROUP BY "Acc Status", "Acc Class", "ADID"
+    ORDER BY "Acc Status", "Acc Class", "ADID"
+  `;
+  const adidRows = await dbAll(adidQuery);
+
+  return formatDriverTreeSummary({ root, statusClassRows, adidRows });
+};
+// Directed Graph summary API
+
+exports.getDirectedGraphSummary = async (parquetFilename) => {
+  await initializeDuckDB(dbRun);
+  const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  const query = `
+    SELECT 
+      CAST("Acc Status" AS VARCHAR) AS "Acc Status",
+      CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
+      COUNT(DISTINCT "Contract Acc") AS "Number of Accounts"
+    FROM read_parquet('${normalizedPath}')
+    GROUP BY "Acc Status", "SMER Segment"
+    ORDER BY "Acc Status", "SMER Segment"
+  `;
+  const result = await dbAll(query);
+  return formatDirectedGraphSummary(result);
+};

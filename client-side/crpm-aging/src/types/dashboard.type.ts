@@ -240,3 +240,20 @@ export interface DebtBySmerSegmentApiResponse {
     };
   };
 }
+
+export interface DriverTreeNode {
+  name: string;
+  value: number;
+  numOfAcc: number;
+  level: number;
+  children?: DriverTreeNode[];
+}
+
+export interface DriverTreeApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    root: DriverTreeNode;
+    branches: DriverTreeNode[];
+  };
+}

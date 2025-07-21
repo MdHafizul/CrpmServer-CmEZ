@@ -596,6 +596,100 @@ function formatDetailedTableSummary(result, getBusinessAreaName, isAgedDebtView 
   return formatted.sort((a, b) => Number(b.ttlOSAmt) - Number(a.ttlOSAmt));
 }
 
+
+function formatDriverTreeSummary({ root, statusClassRows, adidRows }) {
+  const accountClassOrder = ['LPCN', 'OPCN', 'LPCG', 'OPCG'];
+  const adidOrder = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
+
+  // Group ADID rows by status+class
+  const adidMap = {};
+  adidRows.forEach(row => {
+    const key = `${row["Acc Status"]}|${row["Acc Class"]}`;
+    if (!adidMap[key]) adidMap[key] = [];
+    adidMap[key].push(row);
+  });
+
+  // Build tree
+  const branches = ['Active', 'Inactive'].map(status => {
+    const statusRows = statusClassRows.filter(r => r["Acc Status"] === status);
+    const statusTotal = statusRows.reduce((sum, r) => sum + Number(r["TTL O/S Amt"]), 0);
+    const statusAcc = statusRows.reduce((sum, r) => sum + Number(r["Number of Accounts"]), 0);
+
+    return {
+      name: status.charAt(0).toUpperCase() + status.slice(1),
+      value: statusTotal,
+      numOfAcc: statusAcc,
+      level: 1,
+      children: accountClassOrder.map(accClass => {
+        const classRow = statusRows.find(r => r["Acc Class"] === accClass);
+        if (!classRow) return null;
+        const key = `${status}|${accClass}`;
+        return {
+          name: accClass,
+          value: Number(classRow["TTL O/S Amt"]),
+          numOfAcc: Number(classRow["Number of Accounts"]),
+          level: 2,
+          children: adidOrder.map(adid => {
+            const adidRow = (adidMap[key] || []).find(r => r["ADID"] === adid);
+            if (!adidRow) return null;
+            return {
+              name: adid,
+              value: Number(adidRow["TTL O/S Amt"]),
+              numOfAcc: Number(adidRow["Number of Accounts"]),
+              level: 3
+            };
+          }).filter(Boolean)
+        };
+      }).filter(Boolean)
+    };
+  });
+
+  return {
+    root: {
+      name: 'Positive Balance',
+      value: Number(root.PositiveBalance),
+      numOfAcc: Number(root.TotalNoOfAccPositiveBalance),
+      level: 0
+    },
+    branches
+  };
+}
+
+// Directed Graph summary for frontend visualization
+function formatDirectedGraphSummary(result) {
+  // Group by SMER Segment, status, etc.
+  const nodes = [];
+  const edges = [];
+
+  // Example: group by status and SMER Segment
+  result.forEach(row => {
+    const status = row["Acc Status"];
+    const segment = row["SMER Segment"] || "BLANKS";
+    const nodeId = `${status}-${segment}`;
+    nodes.push({
+      id: nodeId,
+      label: segment,
+      level: status === "active" ? 1 : 2,
+      color: status === "active" ? "#059669" : "#dc2626",
+      amount: Number(row["TTL O/S Amt"]) || 0,
+      accounts: Number(row["Number of Accounts"]) || 0,
+      parents: [status]
+    });
+    // Add status nodes if not already present
+    if (!nodes.find(n => n.id === status)) {
+      nodes.push({
+        id: status,
+        label: status.charAt(0).toUpperCase() + status.slice(1),
+        level: 0,
+        color: status === "active" ? "#059669" : "#dc2626"
+      });
+    }
+    edges.push({ from: status, to: nodeId, color: status === "active" ? "#059669" : "#dc2626" });
+  });
+
+  return { nodes, edges };
+}
+
 module.exports = {
   convertBigIntToNumber,
   getFileReader,
@@ -608,6 +702,8 @@ module.exports = {
   formatADIDSummary,
   formatSMERSegmentSummary,
   formatDetailedTableSummary,
+  formatDriverTreeSummary,
+  formatDirectedGraphSummary,
   formatPercent,
   sumFields
 };

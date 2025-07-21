@@ -1,43 +1,85 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import { getDebtBySmerSegmentData } from '../../services/api';
+import type { DebtBySmerSegmentRow } from '../../types/dashboard.type';
 
-interface SmerSegmentDebtData {
-  businessArea: string;
-  station: string;
-  segment?: string;
-  numOfAccounts: number;
-  debtAmount: number;
-  totalUndue?: number;
-  curMthUnpaid?: number;
-  ttlOsAmt?: number;
-  totalUnpaid?: number;
+// Type for each row
+interface SmerSegmentDebtData extends DebtBySmerSegmentRow {
   isTotal?: boolean;
   isGrandTotal?: boolean;
   percentage?: number;
 }
 
 interface SmerSegmentDebtTableProps {
-  data: SmerSegmentDebtData[];
-  loading?: boolean;
-  viewType: 'tradeReceivable' | 'agedDebt';
-  onViewTypeChange: (viewType: 'tradeReceivable' | 'agedDebt') => void;
-  filters?: {
-    segment?: string;
-    segments?: string[];
-  };
-  stationTotals?: any[];
-  grandTotal?: any;
+  filters: any;
 }
 
-const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({
-  data,
-  loading = false,
-  viewType = 'agedDebt',
-  filters = {},
-  stationTotals = [],
-  grandTotal
-}) => {
+const FILENAME = '1750132052464-aging besar.parquet';
+
+const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) => {
+  const [data, setData] = useState<SmerSegmentDebtData[]>([]);
+  const [stationTotals, setStationTotals] = useState<any[]>([]);
+  const [grandTotal, setGrandTotal] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
+      accClassType: filters.governmentType === 'government'
+        ? 'GOVERNMENT'
+        : filters.governmentType === 'non-government'
+        ? 'NON_GOVERNMENT'
+        : 'ALL',
+      mitType: filters.mitFilter === 'mit'
+        ? 'MIT'
+        : filters.mitFilter === 'non-mit'
+        ? 'NON_MIT'
+        : 'ALL',
+      businessAreas: filters.businessAreas,
+      adids: filters.accDefinitions,
+      accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
+      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      smerSegments: filters.smerSegments,
+    };
+    getDebtBySmerSegmentData(FILENAME, apiParams)
+      .then(res => {
+        const d = res.data?.data || [];
+        setData(d.map((row: any) => ({
+          businessArea: row.businessArea,
+          station: row.station,
+          segment: row.segment,
+          numberOfAccounts: row.numberOfAccounts,
+          ttlOSAmt: row.ttlOSAmt,
+          percentOfTotal: row.percentOfTotal,
+          totalUndue: row.totalUndue,
+          curMthUnpaid: row.curMthUnpaid,
+          totalUnpaid: row.totalUnpaid,
+          mitAmt: row.mitAmt,
+          percentage: parseFloat(row.percentOfTotal),
+        })));
+        setStationTotals(res.data?.stationTotals || []);
+        setGrandTotal(res.data?.grandTotal || null);
+      })
+      .finally(() => setLoading(false));
+  }, [
+    filters.viewType,
+    filters.governmentType,
+    filters.mitFilter,
+    filters.businessAreas,
+    filters.accDefinitions,
+    filters.accStatus,
+    filters.netPositiveBalance,
+    filters.accClass,
+    filters.monthsOutstandingBracket,
+    filters.debtRange,
+    filters.smerSegments
+  ]);
+
   // Optionally filter by segment if needed
   const filteredData = useMemo(() => {
     if (!data?.length) return [];
@@ -53,16 +95,17 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({
   // Map stationTotals to table rows
   const stationTotalRows = useMemo(() => {
     if (!stationTotals?.length) return [];
-    return stationTotals.map(st => ({
+    return stationTotals.map((st: any) => ({
       businessArea: st.businessArea,
       station: st.station,
       segment: 'Total',
-      numOfAccounts: st.totalNumberOfAccounts,
-      debtAmount: st.totalTtlOSAmt,
+      numberOfAccounts: st.totalNumberOfAccounts,
+      ttlOSAmt: st.totalTtlOSAmt,
+      percentOfTotal: st.totalPercentOfTotal,
       totalUndue: st.totalUndue,
       curMthUnpaid: st.totalCurMthUnpaid,
-      ttlOsAmt: st.totalTtlOSAmt,
       totalUnpaid: st.totalUnpaid,
+      mitAmt: st.totalMITAmt,
       percentage: parseFloat(st.totalPercentOfTotal),
       isTotal: true
     }));
@@ -98,12 +141,13 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({
         businessArea: 'Grand Total',
         station: '',
         segment: 'Total',
-        numOfAccounts: grandTotal.totalNumberOfAccounts,
-        debtAmount: grandTotal.totalTtlOSAmt,
+        numberOfAccounts: grandTotal.totalNumberOfAccounts,
+        ttlOSAmt: grandTotal.totalTtlOSAmt,
+        percentOfTotal: grandTotal.totalPercentOfTotal,
         totalUndue: grandTotal.totalUndue,
         curMthUnpaid: grandTotal.totalCurMthUnpaid,
-        ttlOsAmt: grandTotal.totalTtlOSAmt,
         totalUnpaid: grandTotal.totalUnpaid,
+        mitAmt: grandTotal.totalMITAmt,
         percentage: parseFloat(grandTotal.totalPercentOfTotal),
         isGrandTotal: true
       });
@@ -152,7 +196,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({
     },
     {
       header: 'Number of Accounts',
-      accessor: 'numOfAccounts',
+      accessor: 'numberOfAccounts',
       cell: (value: number, row: SmerSegmentDebtData) => (
         <span className={`font-medium ${row.isTotal ? 'font-bold text-blue-600' : ''} ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}>
           {value?.toLocaleString()}
@@ -184,7 +228,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({
     },
     {
       header: 'TTL O/S Amt',
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: SmerSegmentDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>

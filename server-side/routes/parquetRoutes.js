@@ -36,6 +36,11 @@ router.post('/debt-by-smer-segment/:filename', dataController.getAgedDebtSummary
 // Process debt detailed table - partial
 router.get('/detailed-table/:filename', dataController.getDetailedDebtTableData);
 
+// Driver Tree summary 
+router.post('/driver-tree-summary/:filename', dataController.getDriverTreeSummary);
+// Directed Graph summary 
+router.post('/directed-graph-summary/:filename', dataController.getDirectedGraphSummary);
+
 
 
 // Get all data from Parquet file

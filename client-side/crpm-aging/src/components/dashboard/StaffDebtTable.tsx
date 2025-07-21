@@ -1,33 +1,72 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import { getDebtByStaffData } from '../../services/api';
+import type { DebtByStaffRow } from '../../types/dashboard.type';
 
-interface StaffDebtData {
-  businessArea: string;
-  station: string;
-  numOfAccounts: number;
-  ttlOsAmt?: number;
-  debtAmount?: number;
-  totalUndue?: number;
-  curMthUnpaid?: number;
-  totalUnpaid?: number;
-  percentage?: number;
+interface StaffDebtData extends DebtByStaffRow {
   isTotal?: boolean;
   isGrandTotal?: boolean;
+  percentage?: number;
 }
 
 interface StaffDebtTableProps {
-  data: StaffDebtData[];
-  loading?: boolean;
-  viewType?: 'tradeReceivable' | 'agedDebt';
-  onViewTypeChange?: (viewType: 'tradeReceivable' | 'agedDebt') => void;
+  filters: any;
 }
 
-const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
-  data,
-  loading = false,
-  viewType = 'agedDebt'
-}) => {
+const FILENAME = '1750132052464-aging besar.parquet';
+
+const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
+  const [data, setData] = useState<StaffDebtData[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
+      businessAreas: filters.businessAreas,
+    };
+    getDebtByStaffData(FILENAME, apiParams)
+      .then(res => {
+        const d = res.data?.data || [];
+        const grandTotal = res.data?.grandTotal;
+        const staffRows = d
+          .filter(row => row.businessArea !== 'TOTAL' && row.businessArea !== 'Grand Total')
+          .map(row => ({
+            businessArea: row.businessArea,
+            station: row.station,
+            numberOfAccounts: row.numberOfAccounts,
+            ttlOSAmt: row.ttlOSAmt,
+            percentOfTotal: row.percentOfTotal,
+            totalUndue: row.totalUndue,
+            curMthUnpaid: row.curMthUnpaid,
+            totalUnpaid: row.totalUnpaid,
+            percentage: parseFloat(row.percentOfTotal),
+          }));
+        const staffRowsSorted = [...staffRows].sort((a, b) => b.percentage - a.percentage);
+        const staffDebtTableData = [
+          ...staffRowsSorted,
+          grandTotal && {
+            businessArea: 'TOTAL',
+            station: 'All Stations',
+            numberOfAccounts: grandTotal.totalNumberOfAccounts,
+            ttlOSAmt: grandTotal.totalTtlOSAmt,
+            percentOfTotal: grandTotal.totalPercentOfTotal,
+            totalUndue: grandTotal.totalUndue,
+            curMthUnpaid: grandTotal.totalCurMthUnpaid,
+            totalUnpaid: grandTotal.totalUnpaid,
+            percentage: parseFloat(grandTotal.totalPercentOfTotal),
+            isGrandTotal: true,
+          }
+        ].filter(Boolean);
+        setData(staffDebtTableData);
+      })
+      .finally(() => setLoading(false));
+  }, [
+    filters.businessAreas,
+    filters.viewType,
+  ]);
+
   // Group by businessArea + station, then render staff rows, then render total row
   const groupedRows = React.useMemo(() => {
     const groups: Record<string, StaffDebtData[]> = {};
@@ -38,7 +77,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
     });
 
     const result: StaffDebtData[] = [];
-    Object.entries(groups).forEach(([key, rows]) => {
+    Object.entries(groups).forEach(([, rows]) => {
       // Staff rows (not total)
       rows.filter(r => !r.isTotal && !r.isGrandTotal).forEach((row, idx) => {
         result.push({
@@ -88,7 +127,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
     },
     { 
       header: 'Number of Accounts', 
-      accessor: 'numOfAccounts',
+      accessor: 'numberOfAccounts',
       align: 'right' as const,
       cell: (value: number, row: StaffDebtData) => (
         <span className={`font-medium ${row.isTotal ? 'font-bold text-blue-600' : ''} ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}>
@@ -121,7 +160,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
     },
     { 
       header: 'TTL O/S Amt', 
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: StaffDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
@@ -154,7 +193,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
   const agedDebtColumns = [
     { 
       header: 'TTL O/S Amt', 
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: StaffDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
@@ -174,7 +213,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({
     }
   ];
 
-  const columns = viewType === 'tradeReceivable' 
+  const columns = filters.viewType === 'tradeReceivable'
     ? [...baseColumns, ...tradeReceivableColumns]
     : [...baseColumns, ...agedDebtColumns];
 

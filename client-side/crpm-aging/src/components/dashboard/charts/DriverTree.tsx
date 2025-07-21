@@ -1,22 +1,46 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Card from '../../ui/Card';
 import { formatCurrency } from '../../../utils/formatter';
 import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
+import { getDriverTreeSummary } from '../../../services/api';
+import type { DriverTreeApiResponse } from '../../../types/dashboard.type'; // Removed DriverTreeNode
 
 interface DriverTreeProps {
-  driverTreeData?: {
-    category: string;
-    debtAmount: number;
-    numOfAcc: number;
-    color: string;
-    type: 'government' | 'non-government';
-    status?: 'active' | 'inactive';
-  }[] | undefined;
   mitAmount?: number; 
 }
 
-const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }) => {
+const FILENAME = '1750132052464-aging besar.parquet'; // <-- hardcoded filename
+
+const GOVERNMENT_CLASSES = ['LPCG', 'OPCG'];
+const NON_GOVERNMENT_CLASSES = ['LPCN', 'OPCN'];
+
+function groupAccountClasses(statusBranch: any) {
+  // Group account classes under government/non-government
+  const government = statusBranch.children.filter((c: any) => GOVERNMENT_CLASSES.includes(c.name));
+  const nonGovernment = statusBranch.children.filter((c: any) => NON_GOVERNMENT_CLASSES.includes(c.name));
+
+  const sum = (arr: any[], key: string) => arr.reduce((acc, cur) => acc + (cur[key] || 0), 0);
+
+  return [
+    {
+      name: 'Government',
+      value: sum(government, 'value'),
+      numOfAcc: sum(government, 'numOfAcc'),
+      level: 2,
+      children: government
+    },
+    {
+      name: 'Non-Government',
+      value: sum(nonGovernment, 'value'),
+      numOfAcc: sum(nonGovernment, 'numOfAcc'),
+      level: 2,
+      children: nonGovernment
+    }
+  ];
+}
+
+const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
   const [selectedDriverNode, setSelectedDriverNode] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   // Add zoom state
@@ -28,132 +52,34 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
   const [dragStart, setDragStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
   // Remove the showLegend state since we'll always show it
   
-  // Process driver tree data with proper Active/Inactive -> Government/Non-Government structure
-  const processedDriverData = useMemo(() => {
-    if (!driverTreeData) {
-      // Default data structure for account classes under Active/Inactive
-      return [
-        // Active Government
-        { category: 'OPCG', debtAmount: 2500000, numOfAcc: 150, color: '#3b82f6', type: 'government' as const, status: 'active' as const },
-        { category: 'LPCG', debtAmount: 1800000, numOfAcc: 120, color: '#10b981', type: 'government' as const, status: 'active' as const },
-        // Active Non-Government
-        { category: 'OPCN', debtAmount: 3200000, numOfAcc: 200, color: '#ec4899', type: 'non-government' as const, status: 'active' as const },
-        { category: 'LPCN', debtAmount: 2100000, numOfAcc: 180, color: '#f59e0b', type: 'non-government' as const, status: 'active' as const },
-        // Inactive Government
-        { category: 'OPCG', debtAmount: 1200000, numOfAcc: 80, color: '#6366f1', type: 'government' as const, status: 'inactive' as const },
-        { category: 'LPCG', debtAmount: 900000, numOfAcc: 60, color: '#059669', type: 'government' as const, status: 'inactive' as const },
-        // Inactive Non-Government
-        { category: 'OPCN', debtAmount: 1600000, numOfAcc: 100, color: '#db2777', type: 'non-government' as const, status: 'inactive' as const },
-        { category: 'LPCN', debtAmount: 1050000, numOfAcc: 90, color: '#d97706', type: 'non-government' as const, status: 'inactive' as const }
-      ];
-    }
-    return driverTreeData;
-  }, [driverTreeData]);
+  // Add state for API data
+  const [driverTreeApiData, setDriverTreeApiData] = useState<DriverTreeApiResponse['data'] | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Create the driver tree structure with Active/Inactive -> Government/Non-Government hierarchy
+  useEffect(() => {
+    setLoading(true);
+    getDriverTreeSummary(FILENAME)
+      .then(res => setDriverTreeApiData(res.data))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Use API data directly for rendering
   const driverTreeStructure = useMemo(() => {
-    const totalDebt = processedDriverData.reduce((sum, item) => sum + item.debtAmount, 0);
-    const totalAccounts = processedDriverData.reduce((sum, item) => sum + item.numOfAcc, 0);
-    
-    // Group by status first (Active/Inactive)
-    const activeData = processedDriverData.filter(item => item.status === 'active');
-    const inactiveData = processedDriverData.filter(item => item.status === 'inactive');
-    
-    const activeTotal = activeData.reduce((sum, item) => sum + item.debtAmount, 0);
-    const inactiveTotal = inactiveData.reduce((sum, item) => sum + item.debtAmount, 0);
-    
-    // Calculate accounts for active and inactive
-    const activeTotalAccounts = activeData.reduce((sum, item) => sum + item.numOfAcc, 0);
-    const inactiveTotalAccounts = inactiveData.reduce((sum, item) => sum + item.numOfAcc, 0);
-    
-    // Create structure for each status
-    const createStatusBranch = (data: any[], statusName: string, statusTotal: number, statusTotalAccounts: number) => {
-      const governmentData = data.filter(item => item.type === 'government');
-      const nonGovernmentData = data.filter(item => item.type === 'non-government');
-      
-      const governmentTotal = governmentData.reduce((sum, item) => sum + item.debtAmount, 0);
-      const nonGovernmentTotal = nonGovernmentData.reduce((sum, item) => sum + item.debtAmount, 0);
-      
-      const governmentTotalAccounts = governmentData.reduce((sum, item) => sum + item.numOfAcc, 0);
-      const nonGovernmentTotalAccounts = nonGovernmentData.reduce((sum, item) => sum + item.numOfAcc, 0);
-      
+    if (!driverTreeApiData) {
       return {
-        name: statusName,
-        value: statusTotal,
-        numOfAcc: statusTotalAccounts, // Add account numbers
-        color: statusName === 'Active' ? '#059669' : '#dc2626',
-        level: 1,
-        percentage: ((statusTotal / totalDebt) * 100).toFixed(1),
-        children: [
-          {
-            name: 'Government',
-            value: governmentTotal,
-            numOfAcc: governmentTotalAccounts, // Add account numbers
-            color: '#3b82f6',
-            level: 2,
-            percentage: statusTotal > 0 ? ((governmentTotal / statusTotal) * 100).toFixed(1) : '0',
-            children: governmentData.map(item => ({
-              name: item.category,
-              value: item.debtAmount,
-              numOfAcc: item.numOfAcc,
-              color: item.color,
-              level: 3,
-              percentage: governmentTotal > 0 ? ((item.debtAmount / governmentTotal) * 100).toFixed(1) : '0',
-              // Add level 4 children
-              children: [
-                { name: 'AG', value: Math.round(item.debtAmount * 0.2), color: '#6366f1', level: 4 },
-                { name: 'CM', value: Math.round(item.debtAmount * 0.15), color: '#10b981', level: 4 },
-                { name: 'DM', value: Math.round(item.debtAmount * 0.18), color: '#f59e0b', level: 4 },
-                { name: 'SL', value: Math.round(item.debtAmount * 0.17), color: '#ec4899', level: 4 },
-                { name: 'IN', value: Math.round(item.debtAmount * 0.15), color: '#3b82f6', level: 4 },
-                { name: 'MN', value: Math.round(item.debtAmount * 0.15), color: '#dc2626', level: 4 }
-              ]
-            }))
-          },
-          {
-            name: 'Non-Government',
-            value: nonGovernmentTotal,
-            numOfAcc: nonGovernmentTotalAccounts, // Add account numbers
-            color: '#ec4899',
-            level: 2,
-            percentage: statusTotal > 0 ? ((nonGovernmentTotal / statusTotal) * 100).toFixed(1) : '0',
-            children: nonGovernmentData.map(item => ({
-              name: item.category,
-              value: item.debtAmount,
-              numOfAcc: item.numOfAcc,
-              color: item.color,
-              level: 3,
-              percentage: nonGovernmentTotal > 0 ? ((item.debtAmount / nonGovernmentTotal) * 100).toFixed(1) : '0',
-              // Add level 4 children
-              children: [
-                { name: 'AG', value: Math.round(item.debtAmount * 0.2), color: '#6366f1', level: 4 },
-                { name: 'CM', value: Math.round(item.debtAmount * 0.15), color: '#10b981', level: 4 },
-                { name: 'DM', value: Math.round(item.debtAmount * 0.18), color: '#f59e0b', level: 4 },
-                { name: 'SL', value: Math.round(item.debtAmount * 0.17), color: '#ec4899', level: 4 },
-                { name: 'IN', value: Math.round(item.debtAmount * 0.15), color: '#3b82f6', level: 4 },
-                { name: 'MN', value: Math.round(item.debtAmount * 0.15), color: '#dc2626', level: 4 }
-              ]
-            }))
-          }
-        ]
+        root: { name: 'No Data', value: 0, numOfAcc: 0, level: 0 },
+        branches: []
       };
-    };
-    
+    }
+    // Transform API response to required structure
     return {
-      root: {
-        name: 'Aged Debt as Of DATE',
-        subtitle: 'Positive Balance',
-        value: totalDebt,
-        numOfAcc: totalAccounts, // Add account numbers to root
-        color: '#1f2937',
-        level: 0
-      },
-      branches: [
-        createStatusBranch(activeData, 'Active', activeTotal, activeTotalAccounts),
-        createStatusBranch(inactiveData, 'Inactive', inactiveTotal, inactiveTotalAccounts)
-      ]
+      root: driverTreeApiData.root,
+      branches: driverTreeApiData.branches.map((statusBranch: any) => ({
+        ...statusBranch,
+        children: groupAccountClasses(statusBranch)
+      }))
     };
-  }, [processedDriverData]);
+  }, [driverTreeApiData]);
 
   // Function to handle downloading the chart as PNG
   const handleDownloadPNG = useCallback(() => {
@@ -239,13 +165,37 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
     setIsDragging(false);
   };
 
+  // Helper to assign colors based on node level/name
+  const getNodeColor = (node: any, level: number) => {
+    if (level === 0) return '#1f2937'; // root
+    if (level === 1) return node.name === 'Active' ? '#059669' : '#dc2626';
+    if (level === 2) return node.name === 'LPCG' || node.name === 'OPCG' ? '#3b82f6' : '#ec4899';
+    if (level === 3) {
+      // Account class
+      if (node.name === 'LPCG' || node.name === 'OPCG') return '#3b82f6';
+      if (node.name === 'LPCN' || node.name === 'OPCN') return '#ec4899';
+      return '#6366f1';
+    }
+    // ADID level
+    const adidColors: Record<string, string> = {
+      AG: '#6366f1',
+      CM: '#10b981',
+      DM: '#f59e0b',
+      SL: '#ec4899',
+      IN: '#3b82f6',
+      MN: '#dc2626'
+    };
+    return adidColors[node.name] || '#64748b';
+  };
+
   // Enhanced horizontal driver tree node component
   const HorizontalDriverTreeNode = useCallback(({ node, x, y, level = 0 }: any) => {
-    const nodeWidth = level === 0 ? 240 : level === 1 ? 200 : level === 2 ? 180 : level === 3 ? 160 : 90;
-    const nodeHeight = level === 0 ? 100 : level === 1 ? 90 : level === 2 ? 80 : level === 3 ? 70 : 50;
+    const nodeWidth = level === 0 ? 240 : level === 1 ? 200 : level === 2 ? 180 : level === 3 ? 160 : 120;
+    const nodeHeight = level === 0 ? 100 : level === 1 ? 90 : level === 2 ? 80 : level === 3 ? 70 : 75;
     const isSelected = selectedDriverNode === node.name;
     const isRoot = level === 0;
-    
+    const color = getNodeColor(node, level);
+
     const handleClick = () => {
       if (level === 1) { // Active/Inactive level
         if (selectedBranch === node.name) {
@@ -278,13 +228,12 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
               dy={isSelected ? "8" : "4"} 
               stdDeviation={isSelected ? "12" : "6"} 
               floodOpacity={isSelected ? "0.25" : "0.15"} 
-              floodColor={node.color}
+              floodColor={color}
             />
           </filter>
-          
           <linearGradient id={`h-node-gradient-${node.name.replace(/\s+/g, '')}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={isSelected ? node.color : 'white'} stopOpacity={1}/>
-            <stop offset="100%" stopColor={isSelected ? node.color : '#f8fafc'} stopOpacity={1}/>
+            <stop offset="0%" stopColor={isSelected ? color : 'white'} stopOpacity={1}/>
+            <stop offset="100%" stopColor={isSelected ? color : '#f8fafc'} stopOpacity={1}/>
           </linearGradient>
         </defs>
         
@@ -296,7 +245,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
           height={nodeHeight}
           rx={isRoot ? 24 : 16}
           fill={`url(#h-node-gradient-${node.name.replace(/\s+/g, '')})`}
-          stroke={node.color}
+          stroke={color}
           strokeWidth={isSelected ? 3 : 2}
           filter={`url(#h-node-shadow-${node.name.replace(/\s+/g, '')})`}
           whileHover={{ scale: 1.05 }}
@@ -308,7 +257,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
           x={x}
           y={y - (nodeHeight/3)}
           textAnchor="middle"
-          fill={isSelected ? 'white' : node.color}
+          fill={isSelected ? 'white' : color}
           fontSize={level === 0 ? 18 : level === 1 ? 16 : level === 2 ? 14 : level === 3 ? 12 : 11}
           fontWeight="bold"
         >
@@ -343,19 +292,19 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
           </text>
         )}
 
-        {/* Only show accounts for level < 4 */}
-        {level < 4 && node.numOfAcc !== undefined && (
+        {/* Only show accounts for level < 4, and also for ADID nodes (level 4) if numOfAcc exists */}
+        {(level < 4 && node.numOfAcc !== undefined) || (level === 4 && node.numOfAcc !== undefined) ? (
           <text
             x={x}
-            y={y + (level === 3 ? 12 : 15)}
+            y={level === 4 ? y + 18 : y + (level === 3 ? 12 : 15)}
             textAnchor="middle"
             fill={isSelected ? 'white' : '#6b7280'}
-            fontSize={level === 0 ? 10 : level === 1 ? 9 : 8}
+            fontSize={level === 0 ? 10 : level === 1 ? 9 : level === 2 ? 8 : 10}
             fontWeight="medium"
           >
             {node.numOfAcc.toLocaleString()} accounts
           </text>
-        )}
+        ) : null}
 
         {/* Only show percentage for level < 4 */}
         {level > 0 && level < 4 && (
@@ -363,7 +312,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
             x={x}
             y={y + (level === 3 ? 22 : nodeHeight/3)}
             textAnchor="middle"
-            fill={isSelected ? 'white' : node.color}
+            fill={isSelected ? 'white' : color}
             fontSize={level === 1 ? 11 : 10}
             fontWeight="bold"
           >
@@ -385,8 +334,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
           </text>
         )}
       </motion.g>
-    );
-  }, [selectedDriverNode, selectedBranch]);
+   ) }, [selectedDriverNode, selectedBranch]);
 
   // Enhanced horizontal connections with organizational chart style (horizontal + vertical lines)
   const HorizontalDriverTreeConnection = useCallback(({ x1, y1, x2, y2, color, isSelected }: any) => {
@@ -484,16 +432,6 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
             transition={{ duration: 0.8, delay: 1.2 }}
           />
         </motion.g>
-        
-        {/* Arrow at end */}
-        <motion.polygon
-          points={`${x2-12},${y2-8} ${x2-12},${y2+8} ${x2+2},${y2}`}
-          fill={color}
-          opacity={0.8}
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 0.3, delay: 1.8 }}
-        />
       </motion.g>
     );
   }, []);
@@ -540,152 +478,157 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
       
       <div 
         ref={containerRef}
-        className="relative h-[900px] overflow-hidden bg-gradient-to-r from-gray-50 to-white rounded-lg cursor-grab active:cursor-grabbing"
+        className="relative h-[1600px] overflow-hidden bg-gradient-to-r from-gray-50 to-white rounded-lg cursor-grab active:cursor-grabbing"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       >
-        <svg 
-          ref={svgRef}
-          width="100%" 
-          height="100%" 
-          viewBox="0 0 1800 900" 
-          style={{
-            transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
-            transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.3s ease'
-          }}
-        >
-          {/* Background grid */}
-          <defs>
-            <pattern id="h-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#h-grid)" opacity="0.5"/>
-          
-          {/* Root node - Total Aged Debt */}
-          <HorizontalDriverTreeNode 
-            node={driverTreeStructure.root}
-            x={150}
-            y={450}
-            level={0}
-          />
-          
-          {/* Level 1: Active/Inactive */}
-          {driverTreeStructure.branches.map((statusBranch, statusIndex) => {
-            const statusX = 450;
-            const statusY = 250 + (statusIndex * 400);
-            const isSelected = selectedDriverNode === statusBranch.name;
+        {loading ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-70 z-20">
+            <div className="text-lg text-gray-500 font-semibold">Loading Driver Tree...</div>
+          </div>
+        ) : (
+          <svg 
+            ref={svgRef}
+            width="100%" 
+            height="100%" 
+            viewBox="0 0 3200 1600" 
+            style={{
+              transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.3s ease'
+            }}
+          >
+            {/* Background grid */}
+            <defs>
+              <pattern id="h-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#h-grid)" opacity="0.5"/>
             
-            return (
-              <g key={statusBranch.name}>
-                {/* Connection from root to status */}
-                <HorizontalDriverTreeConnection
-                  x1={270}
-                  y1={450}
-                  x2={350}
-                  y2={statusY}
-                  color={statusBranch.color}
-                  isSelected={isSelected}
-                />
-                
-                {/* Status node */}
-                <HorizontalDriverTreeNode 
-                  node={statusBranch}
-                  x={statusX}
-                  y={statusY}
-                  level={1}
-                />
-                
-                {/* Level 2: Government/Non-Government */}
-                {statusBranch.children.map((typeBranch: any, typeIndex: number) => {
-                  const typeX = 750;
-                  const typeY = statusY - 100 + (typeIndex * 200);
-                  const isTypeSelected = selectedDriverNode === typeBranch.name;
-                  
-                  return (
-                    <g key={`${statusBranch.name}-${typeBranch.name}`}>
-                      {/* Connection from status to type */}
-                      <HorizontalDriverTreeConnection
-                        x1={550}
-                        y1={statusY}
-                        x2={650}
-                        y2={typeY}
-                        color={typeBranch.color}
-                        isSelected={isTypeSelected}
-                      />
-                      
-                      {/* Type node */}
-                      <HorizontalDriverTreeNode 
-                        node={typeBranch}
-                        x={typeX}
-                        y={typeY}
-                        level={2}
-                      />
-                      
-                      {/* Level 3: Account Classes */}
-                      {typeBranch.children.map((accClass: any, accIndex: number) => {
-                        const accX = 1150;
-                        const accY = typeY - 75 + (accIndex * 100);
-                        const isAccSelected = selectedDriverNode === accClass.name;
-                        
-                        return (
-                          <g key={`${statusBranch.name}-${typeBranch.name}-${accClass.name}`}>
-                            {/* Connection from type to account class */}
-                            <HorizontalDriverTreeConnection
-                              x1={840}
-                              y1={typeY}
-                              x2={1070}
-                              y2={accY}
-                              color={accClass.color}
-                              isSelected={isAccSelected}
-                            />
-                            
-                            {/* Account class node */}
-                            <HorizontalDriverTreeNode 
-                              node={accClass}
-                              x={accX}
-                              y={accY}
-                              level={3}
-                            />
-                            
-                            {/* Level 4: AG, CM, DM, SL, IN, MN */}
-                            {accClass.children && accClass.children.map((leaf: any, leafIdx: number) => {
-                              const leafX = 1400 + (leafIdx * 200);
-                              const leafY = accY;
-                              return (
-                                <g key={`${statusBranch.name}-${typeBranch.name}-${accClass.name}-${leaf.name}`}>
-                                  {/* Connection from account class to leaf */}
-                                  <HorizontalDriverTreeConnection
+            {/* Root node */}
+            <HorizontalDriverTreeNode 
+              node={driverTreeStructure.root}
+              x={150}
+              y={450}
+              level={0}
+            />
+            
+            {/* Level 2: Active/Inactive */}
+            {driverTreeStructure.branches.map((statusBranch: any, statusIndex: number) => {
+              const statusX = 450;
+              const statusY = 250 + (statusIndex * 400);
+              const isSelected = selectedDriverNode === statusBranch.name;
+              const statusColor = getNodeColor(statusBranch, 1);
+
+              return (
+                <g key={statusBranch.name}>
+                  <HorizontalDriverTreeConnection
+                    x1={270}
+                    y1={450}
+                    x2={350}
+                    y2={statusY}
+                    color={statusColor}
+                    isSelected={isSelected}
+                  />
+                  <HorizontalDriverTreeNode 
+                    node={statusBranch}
+                    x={statusX}
+                    y={statusY}
+                    level={1}
+                  />
+                  {/* Level 3: Government/Non-Government */}
+                  {statusBranch.children.map((govBranch: any, govIdx: number) => {
+                    const govX = 850;
+                    const govY = statusY - 100 + (govIdx * 200);
+                    const govColor = getNodeColor(govBranch, 2);
+                    return (
+                      <g key={govBranch.name}>
+                        <HorizontalDriverTreeConnection
+                          x1={650}
+                          y1={statusY}
+                          x2={750}
+                          y2={govY}
+                          color={govColor}
+                          isSelected={selectedDriverNode === govBranch.name}
+                        />
+                        <HorizontalDriverTreeNode
+                          node={govBranch}
+                          x={govX}
+                          y={govY}
+                          level={2}
+                        />
+                        {/* Level 4: Account Classes */}
+                        {govBranch.children && govBranch.children.map((accClass: any, accIdx: number) => {
+                          const accX = 1250;
+                          const accY = govY - 75 + (accIdx * 100);
+                          const accColor = getNodeColor(accClass, 3);
+                          return (
+                            <g key={accClass.name}>
+                              <HorizontalDriverTreeConnection
+                                x1={950}
+                                y1={govY}
+                                x2={1150}
+                                y2={accY}
+                                color={accColor}
+                                isSelected={selectedDriverNode === accClass.name}
+                              />
+                              <HorizontalDriverTreeNode
+                                node={accClass}
+                                x={accX}
+                                y={accY}
+                                level={3}
+                              />
+                              {/* Level 5: ADID nodes */}
+                              {accClass.children && (
+                                <>
+                                  <line
                                     x1={accX + 80}
-                                    y1={accY}
-                                    x2={leafX - 45}
-                                    y2={leafY}
-                                    color={leaf.color}
-                                    isSelected={selectedDriverNode === leaf.name}
+                                    y1={accY - 20}
+                                    x2={1600 + (accClass.children.length - 1) * 200}
+                                    y2={accY - 20}
+                                    stroke="#64748b"
+                                    strokeWidth={3}
+                                    opacity={0.7}
                                   />
-                                  {/* Leaf node */}
-                                  <HorizontalDriverTreeNode
-                                    node={leaf}
-                                    x={leafX}
-                                    y={leafY}
-                                    level={4}
-                                  />
-                                </g>
-                              );
-                            })}
-                          </g>
-                        );
-                      })}
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          })}
-        </svg>
+                                  {accClass.children.map((leaf: any, leafIdx: number) => {
+                                    const leafX = 1600 + (leafIdx * 200);
+                                    const leafColor = getNodeColor(leaf, 4);
+                                    return (
+                                      <g key={leaf.name}>
+                                        <line
+                                          x1={leafX}
+                                          y1={accY + 30}
+                                          x2={leafX}
+                                          y2={accY - 20}
+                                          stroke={leafColor}
+                                          strokeWidth={3}
+                                          opacity={0.85}
+                                        />
+                                        <HorizontalDriverTreeNode
+                                          node={leaf}
+                                          x={leafX}
+                                          y={accY + 30}
+                                          level={4}
+                                        />
+                                      </g>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </g>
+                          );
+                        })}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          </svg>
+        )}
         
         {/* Zoom level indicator */}
         <div className="absolute bottom-4 right-4 bg-white bg-opacity-80 px-3 py-1 rounded-md shadow-sm">
@@ -703,7 +646,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ driverTreeData, mitAmount = 0 }
             <div className="flex justify-between items-center gap-4">
               <span className="text-sm text-gray-600 font-medium">CA:</span>
               <span className="text-sm font-bold text-gray-800">
-                {driverTreeStructure.root.numOfAcc.toLocaleString()} accounts
+                {driverTreeStructure.root.numOfAcc?.toLocaleString() ?? '0'} accounts
               </span>
             </div>
             <div className="flex justify-between items-center gap-4">

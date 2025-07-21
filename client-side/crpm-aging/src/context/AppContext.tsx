@@ -93,6 +93,7 @@ interface AppContextType {
 interface FiltersType {
   businessArea: string;
   setBusinessArea: (value: string) => void;
+  onBusinessAreaChange: (value: string) => void;
   businessAreaOptions: FilterOptions[];
 
   businessAreas: string[];
@@ -100,18 +101,22 @@ interface FiltersType {
 
   accStatus: string;
   setAccStatus: (value: string) => void;
+  onAccStatusChange: (value: string) => void;
   accStatusOptions: FilterOptions[];
 
   netPositiveBalance: string;
   setNetPositiveBalance: (value: string) => void;
+  onNetPositiveBalanceChange: (value: string) => void;
   netPositiveBalanceOptions: FilterOptions[];
 
   accClass: string;
   setAccClass: (value: string) => void;
+  onAccClassChange: (value: string) => void;
   accClassOptions: FilterOptions[];
 
   accDefinition: string;
   setAccDefinition: (value: string) => void;
+  onAccDefinitionChange: (value: string) => void;
   accDefinitionOptions: FilterOptions[];
 
   accDefinitions: string[];
@@ -119,18 +124,22 @@ interface FiltersType {
 
   governmentType: string;
   setGovernmentType: (value: string) => void;
+  onGovernmentTypeChange: (value: string) => void;
   governmentTypeOptions: FilterOptions[];
 
   mitFilter: string;
   setMitFilter: (value: string) => void;
+  onMitFilterChange: (value: string) => void;
   mitFilterOptions: FilterOptions[];
 
   monthsOutstandingBracket: string;
   setMonthsOutstandingBracket: (value: string) => void;
+  onMonthsOutstandingBracketChange: (value: string) => void;
   monthsOutstandingBracketOptions: FilterOptions[];
 
   debtRange: string;
   setDebtRange: (value: string) => void;
+  onDebtRangeChange: (value: string) => void;
   debtRangeOptions: FilterOptions[];
 
   smerSegmentOptions: FilterOptions[];
@@ -139,6 +148,7 @@ interface FiltersType {
 
   viewType: 'tradeReceivable' | 'agedDebt';
   setViewType: (value: 'tradeReceivable' | 'agedDebt') => void;
+  onViewTypeChange: (value: 'tradeReceivable' | 'agedDebt') => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -429,40 +439,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const filters: FiltersType = {
     businessArea,
     setBusinessArea,
+    onBusinessAreaChange: setBusinessArea,
     businessAreaOptions,
     businessAreas,
     setBusinessAreas,
     accStatus,
     setAccStatus,
+    onAccStatusChange: setAccStatus,
     accStatusOptions,
     netPositiveBalance,
     setNetPositiveBalance,
+    onNetPositiveBalanceChange: setNetPositiveBalance,
     netPositiveBalanceOptions,
     accClass,
     setAccClass,
+    onAccClassChange: setAccClass,
     accClassOptions,
     accDefinition,
     setAccDefinition,
+    onAccDefinitionChange: setAccDefinition,
     accDefinitionOptions,
     accDefinitions,
     setAccDefinitions,
     governmentType,
     setGovernmentType,
+    onGovernmentTypeChange: setGovernmentType,
     governmentTypeOptions,
     mitFilter,
     setMitFilter,
+    onMitFilterChange: setMitFilter,
     mitFilterOptions,
     monthsOutstandingBracket,
     setMonthsOutstandingBracket,
+    onMonthsOutstandingBracketChange: setMonthsOutstandingBracket,
     monthsOutstandingBracketOptions,
     debtRange,
     setDebtRange,
+    onDebtRangeChange: setDebtRange,
     debtRangeOptions,
     smerSegmentOptions,
     smerSegments,
     setSmerSegments,
     viewType,
     setViewType,
+    onViewTypeChange: setViewType,
   };
 
   return (

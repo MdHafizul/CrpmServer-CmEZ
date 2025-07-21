@@ -238,6 +238,31 @@ exports.getAllDataFromParquet = async (req, res) => {
   }
 };
 
+// @DESC : Get Driver Tree summary for frontend
+// @route POST /api/v2/crpm/driver-tree-summary/:filename
+exports.getDriverTreeSummary = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const data = await parquetServices.getDriverTreeSummary(filename);
+    res.json({ success: true, filename, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// @DESC : Get Directed Graph summary for frontend
+// @route POST /api/v2/crpm/directed-graph-summary/:filename
+exports.getDirectedGraphSummary = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const data = await parquetServices.getDirectedGraphSummary(filename); // No filters
+    res.json({ success: true, filename, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @DESC : Download a converted Parquet file
 // @route GET /api/v2/parquet/download/:filename
 // @access Public

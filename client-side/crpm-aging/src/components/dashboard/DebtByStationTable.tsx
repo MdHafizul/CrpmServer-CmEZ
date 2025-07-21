@@ -1,75 +1,72 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
 import Dropdown from '../ui/Dropdown';
-
-interface DebtByStationData {
-  businessArea: string;
-  station: string;
-  numOfAccounts: number;
-  debtAmount: number;
-  // Additional fields for Trade Receivable view
-  totalUndue?: number;
-  curMthUnpaid?: number;
-  ttlOsAmt?: number;
-  totalUnpaid?: number;
-}
+import { getDebtByStationData } from '../../services/api';
+import type { DebtByStationRow } from '../../types/dashboard.type';
 
 interface DebtByStationTableProps {
-  data: DebtByStationData[];
-  loading?: boolean;
+  filters: any;
   title?: string;
-  viewType: 'tradeReceivable' | 'agedDebt';
-  onViewTypeChange: (viewType: 'tradeReceivable' | 'agedDebt') => void;
-  filters?: {
-    businessArea: string;
-    onBusinessAreaChange: (value: string) => void;
-    businessAreaOptions: { value: string; label: string }[];
-  };
 }
 
-const DebtByStationTable: React.FC<DebtByStationTableProps> = ({
-  data,
-  loading = false,
-  title = 'Summary Aged Debt by Station',
-  viewType,
-  filters
-}) => {
-  // Calculate totals first for percentage calculations
-  const totals = useMemo(() => ({
-    numOfAccounts: data.reduce((sum, item) => sum + item.numOfAccounts, 0),
-    debtAmount: data.reduce((sum, item) => sum + item.debtAmount, 0),
-    totalUndue: data.reduce((sum, item) => sum + (item.totalUndue || 0), 0),
-    curMthUnpaid: data.reduce((sum, item) => sum + (item.curMthUnpaid || 0), 0),
-    ttlOsAmt: data.reduce((sum, item) => sum + (item.ttlOsAmt || 0), 0),
-    totalUnpaid: data.reduce((sum, item) => sum + (item.totalUnpaid || 0), 0)
-  }), [data]);
+const FILENAME = '1750132052464-aging besar.parquet';
 
-  // Add percentage and sort data
-  const processedData = useMemo(() => {
-    // Calculate which total to use based on view type
-    const totalToUse = viewType === 'tradeReceivable' ? totals.ttlOsAmt : totals.debtAmount;
-    
-    // Add percentage to each row
-    const withPercentages = data.map(item => {
-      const valueToUse = viewType === 'tradeReceivable' ? (item.ttlOsAmt || 0) : item.debtAmount;
-      return {
-        ...item,
-        percentage: totalToUse > 0 ? (valueToUse / totalToUse) * 100 : 0
-      };
-    });
-    
-    // Sort by percentage in descending order
-    return [...withPercentages].sort((a, b) => b.percentage - a.percentage);
-  }, [data, totals, viewType]);
+const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title = 'Summary Aged Debt by Station' }) => {
+  const [data, setData] = useState<DebtByStationRow[]>([]);
+  const [grandTotal, setGrandTotal] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
 
-  const baseColumns = [
+  useEffect(() => {
+    setLoading(true);
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
+      accClassType: filters.governmentType === 'government'
+        ? 'GOVERNMENT'
+        : filters.governmentType === 'non-government'
+        ? 'NON_GOVERNMENT'
+        : 'ALL',
+      mitType: filters.mitFilter === 'mit'
+        ? 'MIT'
+        : filters.mitFilter === 'non-mit'
+        ? 'NON_MIT'
+        : 'ALL',
+      businessAreas: filters.businessAreas,
+      adids: filters.accDefinitions,
+      accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
+      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      smerSegments: filters.smerSegments,
+    };
+    getDebtByStationData(FILENAME, apiParams)
+      .then(res => {
+        setData(res.data?.data || []);
+        setGrandTotal(res.data?.grandTotal || null);
+      })
+      .finally(() => setLoading(false));
+  }, [
+    filters.viewType,
+    filters.governmentType,
+    filters.mitFilter,
+    filters.businessAreas,
+    filters.accDefinitions,
+    filters.accStatus,
+    filters.netPositiveBalance,
+    filters.accClass,
+    filters.monthsOutstandingBracket,
+    filters.debtRange,
+    filters.smerSegments
+  ]);
+
+  const columns = [
     { 
       header: 'Business Area', 
       accessor: 'businessArea',
       align: 'left' as const,
-      cell: (value: string) => (
-        <span className={`font-medium ${value === 'Grand Total' ? 'text-blue-600 font-bold' : 'text-gray-900'}`}>
+      cell: (value: string, row: any) => (
+        <span className={`font-medium ${row.isGrandTotal ? 'text-blue-600 font-bold text-lg' : 'text-gray-900'}`}>
           {value}
         </span>
       )
@@ -79,55 +76,27 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({
       accessor: 'station',
       align: 'left' as const,
       cell: (value: string, row: any) => (
-        <span className={`font-medium ${row.businessArea === 'Grand Total' ? 'text-blue-600 font-bold' : 'text-gray-700'}`}>
+        <span className={`font-medium ${row.isGrandTotal ? 'text-blue-600 font-bold text-lg' : 'text-gray-700'}`}>
           {value}
         </span>
       )
     },
     { 
       header: 'Number of Accounts', 
-      accessor: 'numOfAccounts',
+      accessor: 'numberOfAccounts',
       align: 'right' as const,
       cell: (value: number, row: any) => (
-        <span className={`font-medium ${row.businessArea === 'Grand Total' ? 'text-blue-600 font-bold text-lg' : ''}`}>
-          {value.toLocaleString()}
-        </span>
-      )
-    }
-  ];
-
-  // Aged Debt view columns - with totals row styling
-  const agedDebtColumns = [
-    { 
-      header: 'TTL O/S Amt', 
-      accessor: 'debtAmount',
-      align: 'right' as const,
-      cell: (value: number, row: any) => (
-        <span className={`${row.businessArea === 'Grand Total' ? 'font-bold text-blue-600 text-lg' : 'font-bold text-gray-900'}`}>
-          RM {value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <span className={`font-medium ${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : ''}`}>
+          {value?.toLocaleString()}
         </span>
       )
     },
-    { 
-      header: '% of Total', 
-      accessor: 'percentage',
-      align: 'right' as const,
-      cell: (value: number, row: any) => (
-        <span className={`${row.businessArea === 'Grand Total' ? 'font-bold text-blue-600 text-lg' : 'font-medium text-gray-900'}`}>
-          {row.businessArea === 'Grand Total' ? '100.00%' : value.toFixed(2) + '%'}
-        </span>
-      )
-    }
-  ];
-
-  // Additional columns for Trade Receivable view - with totals row styling
-  const tradeReceivableColumns = [
     { 
       header: 'Total Undue', 
       accessor: 'totalUndue',
       align: 'right' as const,
       cell: (value: number, row: any) => (
-        <span className={`font-medium ${row.businessArea === 'Grand Total' ? 'text-blue-600 font-bold text-lg' : 'text-blue-600'}`}>
+        <span className={`font-medium ${row.isGrandTotal ? 'text-blue-600 font-bold text-lg' : 'text-blue-600'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )
@@ -137,28 +106,18 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({
       accessor: 'curMthUnpaid',
       align: 'right' as const,
       cell: (value: number, row: any) => (
-        <span className={`font-medium ${row.businessArea === 'Grand Total' ? 'text-blue-600 font-bold text-lg' : 'text-orange-600'}`}>
+        <span className={`font-medium ${row.isGrandTotal ? 'text-blue-600 font-bold text-lg' : 'text-orange-600'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )
     },
     { 
       header: 'TTL O/S Amt', 
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: any) => (
-        <span className={`${row.businessArea === 'Grand Total' ? 'font-bold text-blue-600 text-lg' : 'font-bold text-red-600'}`}>
+        <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-bold text-red-600'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-        </span>
-      )
-    },
-    { 
-      header: '% of Total', 
-      accessor: 'percentage',
-      align: 'right' as const,
-      cell: (value: number, row: any) => (
-        <span className={`${row.businessArea === 'Grand Total' ? 'font-bold text-blue-600 text-lg' : 'font-medium text-gray-900'}`}>
-          {row.businessArea === 'Grand Total' ? '100.00%' : value.toFixed(2) + '%'}
         </span>
       )
     },
@@ -167,37 +126,43 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: any) => (
-        <span className={`${row.businessArea === 'Grand Total' ? 'font-bold text-blue-600 text-lg' : 'font-bold text-gray-900'}`}>
+        <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-bold text-gray-900'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        </span>
+      )
+    },
+    { 
+      header: '% of Total', 
+      accessor: 'percentOfTotal',
+      align: 'right' as const,
+      cell: (value: string, row: any) => (
+        <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-medium text-gray-900'}`}>
+          {value ? `${parseFloat(value).toFixed(2)}%` : ''}
         </span>
       )
     }
   ];
 
-  // Combine columns based on view type
-  const columns = viewType === 'tradeReceivable' 
-    ? [...baseColumns, ...tradeReceivableColumns]
-    : [...baseColumns, ...agedDebtColumns];
-
-  // Create totals row data
-  const totalsRowData = {
-    businessArea: 'Grand Total',
-    station: '',
-    numOfAccounts: totals.numOfAccounts,
-    totalUndue: totals.totalUndue,
-    curMthUnpaid: totals.curMthUnpaid,
-    ttlOsAmt: totals.ttlOsAmt,
-    totalUnpaid: totals.totalUnpaid,
-    debtAmount: totals.debtAmount,
-    percentage: 100 // Always 100%
-  };
-
-  // Combine data with totals row
-  const dataWithTotals = [...processedData, totalsRowData];
+  // Append grand total row if present
+  const tableData = grandTotal
+    ? [
+        ...data,
+        {
+          businessArea: 'Grand Total',
+          station: '',
+          numberOfAccounts: grandTotal.totalNumberOfAccounts,
+          totalUndue: grandTotal.totalUndue,
+          curMthUnpaid: grandTotal.totalCurMthUnpaid,
+          ttlOSAmt: grandTotal.totalTtlOSAmt,
+          totalUnpaid: grandTotal.totalUnpaid,
+          percentOfTotal: grandTotal.totalPercentOfTotal,
+          isGrandTotal: true
+        }
+      ]
+    : data;
 
   const headerRight = (
     <div className="flex items-center gap-4">
-      {/* Business Area Filter - remove view type toggle buttons as they're now in FilterSection */}
       {filters && (
         <Dropdown
           options={filters.businessAreaOptions}
@@ -214,7 +179,7 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({
     <Card title={title} headerRight={headerRight}>
       <Table 
         columns={columns} 
-        data={dataWithTotals} 
+        data={tableData} 
         loading={loading}
         emptyMessage="No debt data available"
       />

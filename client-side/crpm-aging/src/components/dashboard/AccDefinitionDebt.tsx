@@ -1,47 +1,120 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import { getDebtByAdidData } from '../../services/api';
+import type { DebtByAccountByADIDRow } from '../../types/dashboard.type';
 
-interface AccDefinitionDebtData {
-  businessArea: string;
-  station: string;
-  numOfAccounts: number;
-  debtAmount: number;
-  accDefinition?: string;
-  totalUndue?: number;
-  curMthUnpaid?: number;
-  ttlOsAmt?: number;
-  totalUnpaid?: number;
+// Type for each row
+interface AccDefinitionDebtData extends DebtByAccountByADIDRow {
   isTotal?: boolean;
   isGrandTotal?: boolean;
   percentage?: number;
 }
 
 interface AccDefinitionDebtProps {
-  data: AccDefinitionDebtData[];
-  loading?: boolean;
-  viewType: 'tradeReceivable' | 'agedDebt';
-  onViewTypeChange: (viewType: 'tradeReceivable' | 'agedDebt') => void;
-  filters?: {
-    accDefinition?: string;
-    accDefinitions?: string[];
-  };
+  filters: any;
 }
 
-const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
-  data,
-  loading = false,
-  viewType = 'agedDebt',
-  filters = {}
-}) => {
+const FILENAME = '1750132052464-aging besar.parquet';
+
+const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
+  const [data, setData] = useState<AccDefinitionDebtData[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const apiParams = {
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
+      accClassType: filters.governmentType === 'government'
+        ? 'GOVERNMENT'
+        : filters.governmentType === 'non-government'
+        ? 'NON_GOVERNMENT'
+        : 'ALL',
+      mitType: filters.mitFilter === 'mit'
+        ? 'MIT'
+        : filters.mitFilter === 'non-mit'
+        ? 'NON_MIT'
+        : 'ALL',
+      businessAreas: filters.businessAreas,
+      adids: filters.accDefinitions,
+      accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+    };
+    getDebtByAdidData(FILENAME, apiParams)
+      .then(res => {
+        // Map API data for DebtByADID
+        const d = res.data?.data || [];
+        const stationTotals = res.data?.stationTotals || [];
+        const grandTotal = res.data?.grandTotal;
+        const mapped: AccDefinitionDebtData[] = [
+          ...d.map((row: any) => ({
+            businessArea: row.businessArea,
+            station: row.station,
+            adid: row.adid,
+            numberOfAccounts: row.numberOfAccounts,
+            ttlOSAmt: row.ttlOSAmt,
+            percentOfTotal: row.percentOfTotal,
+            totalUndue: row.totalUndue,
+            curMthUnpaid: row.curMthUnpaid,
+            totalUnpaid: row.totalUnpaid,
+            mitAmt: row.mitAmt,
+            percentage: parseFloat(row.percentOfTotal),
+          })),
+          ...stationTotals.map((stationTotal: any) => ({
+            businessArea: stationTotal.businessArea,
+            station: stationTotal.station,
+            adid: 'Total',
+            numberOfAccounts: stationTotal.totalNumberOfAccounts,
+            ttlOSAmt: stationTotal.totalTtlOSAmt,
+            percentOfTotal: stationTotal.totalPercentOfTotal,
+            totalUndue: stationTotal.totalUndue,
+            curMthUnpaid: stationTotal.totalCurMthUnpaid,
+            totalUnpaid: stationTotal.totalUnpaid,
+            mitAmt: stationTotal.totalMITAmt,
+            percentage: parseFloat(stationTotal.totalPercentOfTotal),
+            isTotal: true,
+          })),
+          grandTotal && {
+            businessArea: 'Grand Total',
+            station: '',
+            adid: 'ADID',
+            numberOfAccounts: grandTotal.totalNumberOfAccounts,
+            ttlOSAmt: grandTotal.totalTtlOSAmt,
+            percentOfTotal: grandTotal.totalPercentOfTotal,
+            totalUndue: grandTotal.totalUndue,
+            curMthUnpaid: grandTotal.totalCurMthUnpaid,
+            totalUnpaid: grandTotal.totalUnpaid,
+            mitAmt: grandTotal.totalMITAmt,
+            percentage: parseFloat(grandTotal.totalPercentOfTotal),
+            isGrandTotal: true,
+          }
+        ].filter(Boolean) as AccDefinitionDebtData[];
+        setData(mapped);
+      })
+      .finally(() => setLoading(false));
+  }, [
+    filters.viewType,
+    filters.governmentType,
+    filters.mitFilter,
+    filters.businessAreas,
+    filters.accDefinitions,
+    filters.accStatus,
+    filters.netPositiveBalance,
+    filters.accClass,
+    filters.monthsOutstandingBracket,
+    filters.debtRange,
+    filters.smerSegments
+  ]);
+
   // Optionally filter by ADID if needed
   const filteredData = useMemo(() => {
     if (!data?.length) return [];
     let filtered = [...data];
     if (filters.accDefinitions && filters.accDefinitions.length > 0) {
-      filtered = filtered.filter(item => filters.accDefinitions!.includes(item.accDefinition || ''));
+      filtered = filtered.filter(item => filters.accDefinitions!.includes(item.adid || ''));
     } else if (filters.accDefinition && filters.accDefinition !== 'all') {
-      filtered = filtered.filter(item => item.accDefinition === filters.accDefinition);
+      filtered = filtered.filter(item => item.adid === filters.accDefinition);
     }
     return filtered;
   }, [data, filters.accDefinition, filters.accDefinitions]);
@@ -56,7 +129,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     });
 
     const result: AccDefinitionDebtData[] = [];
-    Object.entries(groups).forEach(([key, rows]) => {
+    Object.entries(groups).forEach(([, rows]) => {
       // ADID rows (not total/grand total)
       rows.filter(r => !r.isTotal && !r.isGrandTotal).forEach((row, idx) => {
         result.push({
@@ -104,7 +177,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     },
     {
       header: 'ADID',
-      accessor: 'accDefinition',
+      accessor: 'adid',
       cell: (value: string, row: AccDefinitionDebtData) => {
         if (row.isGrandTotal) {
           return <span className="font-bold text-lg text-blue-600">{value}</span>;
@@ -129,7 +202,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     },
     {
       header: 'Number of Accounts',
-      accessor: 'numOfAccounts',
+      accessor: 'numberOfAccounts',
       cell: (value: number, row: AccDefinitionDebtData) => (
         <span className={`font-medium ${row.isTotal ? 'font-bold text-blue-600' : ''} ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}>
           {value?.toLocaleString()}
@@ -161,7 +234,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     },
     {
       header: 'TTL O/S Amt',
-      accessor: 'ttlOsAmt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: AccDefinitionDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
