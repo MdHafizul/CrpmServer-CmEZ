@@ -7,7 +7,7 @@ interface StaffDebtData {
   station: string;
   numOfAccounts: number;
   ttlOsAmt?: number;
-  debtAmount?: number; // Some data sources might use this instead of ttlOsAmt
+  debtAmount?: number;
   // Add Trade Receivable view fields
   totalUndue?: number;
   curMthUnpaid?: number;

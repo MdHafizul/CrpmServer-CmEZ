@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
 
-
 interface AccDefinitionDebtData {
   businessArea: string;
   station: string;
@@ -18,8 +17,9 @@ interface AccDefinitionDebtData {
 
 interface TableRow extends AccDefinitionDebtData {
   isFirstInGroup?: boolean;
-  isTotal?: boolean; 
+  isTotal?: boolean;
   isGrandTotal?: boolean;
+  percentage?: number;
 }
 
 interface AccDefinitionDebtProps {
@@ -41,48 +41,41 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
 }) => {
   // Local state for expanded data
   const [expandedData, setExpandedData] = useState<AccDefinitionDebtData[]>([]);
-  
+
   // Expand data to have all ADID types per business area
   useEffect(() => {
     if (data.length > 0) {
       // Group by business area and station
       const businessAreas = new Map<string, { businessArea: string, station: string }>();
-      
       data.forEach(item => {
         businessAreas.set(item.businessArea, {
           businessArea: item.businessArea,
           station: item.station
         });
       });
-      
-      // Create expanded dataset with all ADID types per business area
-      const expanded: AccDefinitionDebtData[] = [];
-      
+
       // ADID types
       const adidTypes = ['AG', 'CM', 'DM', 'IN', 'MN', 'SL'];
-      
+
       // Filter ADID types based on selected filters
       let filteredAdidTypes = [...adidTypes];
-      
       if (filters.accDefinitions && filters.accDefinitions.length > 0) {
-        // Use multi-select filter values
-        filteredAdidTypes = adidTypes.filter(type => 
+        filteredAdidTypes = adidTypes.filter(type =>
           filters.accDefinitions!.includes(type)
         );
       } else if (filters.accDefinition && filters.accDefinition !== 'all') {
-        // Use single-select filter value
         filteredAdidTypes = [filters.accDefinition];
       }
-      
+
       // For each business area, create entries for filtered ADID types
+      const expanded: AccDefinitionDebtData[] = [];
       businessAreas.forEach((area) => {
         filteredAdidTypes.forEach(adidType => {
           // Find existing data for this business area and ADID type
-          const existingData = data.find(item => 
-            item.businessArea === area.businessArea && 
+          const existingData = data.find(item =>
+            item.businessArea === area.businessArea &&
             item.accDefinition === adidType
           );
-          
           // If data exists, use it; otherwise create a new entry with random values
           if (existingData) {
             expanded.push({
@@ -100,7 +93,7 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
           }
         });
       });
-      
+
       setExpandedData(expanded);
     }
   }, [data, filters.accDefinition, filters.accDefinitions]);
@@ -108,10 +101,9 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
   // Group and organize data by business area
   const organizedData = useMemo(() => {
     if (!expandedData.length) return [];
-    
+
     // Group data by business area
     const groupedByBusinessArea = new Map<string, AccDefinitionDebtData[]>();
-    
     expandedData.forEach(item => {
       const key = item.businessArea;
       if (!groupedByBusinessArea.has(key)) {
@@ -119,46 +111,42 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
       }
       groupedByBusinessArea.get(key)!.push(item);
     });
-    
+
     // Track totals for grand total calculation
     let grandTotalDebt = 0;
     let grandTotalAccounts = 0;
     let grandTotalTtlOsAmt = 0;
-    
     expandedData.forEach(item => {
       grandTotalDebt += item.debtAmount;
       grandTotalAccounts += item.numOfAccounts;
       grandTotalTtlOsAmt += (item.ttlOsAmt || 0);
     });
-    
+
     // Calculate business area totals and percentages for sorting
     const businessAreaTotals = Array.from(groupedByBusinessArea.entries()).map(([key, items]) => {
       const totalDebt = items.reduce((sum, item) => sum + item.debtAmount, 0);
       const totalTtlOsAmt = items.reduce((sum, item) => sum + (item.ttlOsAmt || 0), 0);
-      
       const totalValue = viewType === 'tradeReceivable' ? totalTtlOsAmt : totalDebt;
       const grandTotal = viewType === 'tradeReceivable' ? grandTotalTtlOsAmt : grandTotalDebt;
-      
       const percentage = grandTotal > 0 ? (totalValue / grandTotal) * 100 : 0;
-      
       return {
         businessArea: key,
         percentage,
         items
       };
     });
-    
+
     // Sort business areas by total percentage (descending)
     const sortedBusinessAreas = businessAreaTotals.sort((a, b) => b.percentage - a.percentage);
-    
+
     // Flatten the data with proper formatting for display
-    const result: (AccDefinitionDebtData & { 
-      isFirstInGroup?: boolean, 
-      isTotal?: boolean, 
+    const result: (AccDefinitionDebtData & {
+      isFirstInGroup?: boolean,
+      isTotal?: boolean,
       isGrandTotal?: boolean,
-      percentage?: number 
+      percentage?: number
     })[] = [];
-    
+
     // Process each business area in sorted order
     sortedBusinessAreas.forEach(({ items }) => {
       // Calculate percentages for each item
@@ -170,25 +158,25 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
           percentage: grandTotal > 0 ? (itemValue / grandTotal) * 100 : 0
         };
       });
-      
+
       // Sort by percentage in descending order
       const sortedByPercentage = [...itemsWithPercentage].sort((a, b) => b.percentage! - a.percentage!);
-      
+
       // Add first item with business area info
       if (sortedByPercentage.length > 0) {
         const firstItem = { ...sortedByPercentage[0], isFirstInGroup: true };
         result.push(firstItem);
-        
+
         // Add remaining items without business area info
         for (let i = 1; i < sortedByPercentage.length; i++) {
           result.push(sortedByPercentage[i]);
         }
-        
+
         // Calculate business area total
         const totalAccounts = sortedByPercentage.reduce((sum, item) => sum + item.numOfAccounts, 0);
         const totalDebt = sortedByPercentage.reduce((sum, item) => sum + item.debtAmount, 0);
         const businessAreaPercentage = grandTotalDebt > 0 ? (totalDebt / grandTotalDebt) * 100 : 0;
-        
+
         // Add business area total row
         result.push({
           businessArea: sortedByPercentage[0].businessArea,
@@ -201,7 +189,7 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         });
       }
     });
-    
+
     // Add grand total row if there are multiple business areas
     if (groupedByBusinessArea.size > 1) {
       result.push({
@@ -214,18 +202,16 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         percentage: 100 // Always 100%
       });
     }
-    
+
     return result;
   }, [expandedData, viewType]);
 
   // Calculate summary totals for each business area
   const businessAreaSummary = useMemo(() => {
     const summary = new Map<string, AccDefinitionDebtData>();
-    
     expandedData.forEach(item => {
       const key = item.businessArea;
       const existing = summary.get(key);
-      
       if (existing) {
         existing.numOfAccounts += item.numOfAccounts;
         existing.debtAmount += item.debtAmount;
@@ -239,13 +225,12 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         });
       }
     });
-    
     return Array.from(summary.values());
   }, [expandedData]);
 
   const baseColumns = [
-    { 
-      header: 'Business Area', 
+    {
+      header: 'Business Area',
       accessor: 'businessArea',
       cell: (value: string, row: any) => {
         if (row.isGrandTotal) {
@@ -257,11 +242,11 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         if (row.isFirstInGroup) {
           return <span className="font-medium text-gray-900">{value}</span>;
         }
-        return null; // Empty cell for rows that aren't the first in a group
+        return null;
       }
     },
-    { 
-      header: 'Station', 
+    {
+      header: 'Station',
       accessor: 'station',
       cell: (value: string, row: any) => {
         if (row.isGrandTotal || row.isTotal) {
@@ -270,11 +255,11 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         if (row.isFirstInGroup) {
           return <span className="text-gray-700">{value}</span>;
         }
-        return null; // Empty cell for rows that aren't the first in a group
+        return null;
       }
     },
-    { 
-      header: 'ADID', 
+    {
+      header: 'ADID',
       accessor: 'accDefinition',
       cell: (value: string, row: any) => {
         if (row.isGrandTotal) {
@@ -283,8 +268,6 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         if (row.isTotal) {
           return <span className="font-bold text-blue-600">Total</span>;
         }
-        
-        // Color coding for different ADIDs
         const colors: Record<string, string> = {
           'AG': 'text-green-600',
           'CM': 'text-blue-600',
@@ -293,7 +276,6 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
           'MN': 'text-red-600',
           'SL': 'text-teal-600'
         };
-        
         return (
           <span className={`font-medium ${colors[value] || 'text-gray-600'}`}>
             {value || '-'}
@@ -301,8 +283,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         );
       }
     },
-    { 
-      header: 'Number of Accounts', 
+    {
+      header: 'Number of Accounts',
       accessor: 'numOfAccounts',
       cell: (value: number, row: any) => (
         <span className={`font-medium ${row.isTotal ? 'font-bold text-blue-600' : ''} ${row.isGrandTotal ? 'font-bold text-lg text-blue-600' : ''}`}>
@@ -312,10 +294,10 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     },
   ];
 
-   // Aged Debt view columns - with totals row styling
+  // Aged Debt view columns - with totals row styling
   const agedDebtColumns = [
-    { 
-      header: 'TTL O/S Amt', 
+    {
+      header: 'TTL O/S Amt',
       accessor: 'debtAmount',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -324,8 +306,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         </span>
       )
     },
-    { 
-      header: '% of Total', 
+    {
+      header: '% of Total',
       accessor: 'percentage',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -336,10 +318,10 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     }
   ];
 
-    // Additional columns for Trade Receivable view - with totals row styling
+  // Additional columns for Trade Receivable view - with totals row styling
   const tradeReceivableColumns = [
-    { 
-      header: 'Total Undue', 
+    {
+      header: 'Total Undue',
       accessor: 'totalUndue',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -348,8 +330,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         </span>
       )
     },
-    { 
-      header: 'Cur.Mth Unpaid', 
+    {
+      header: 'Cur.Mth Unpaid',
       accessor: 'curMthUnpaid',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -358,8 +340,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         </span>
       )
     },
-    { 
-      header: 'TTL O/S Amt', 
+    {
+      header: 'TTL O/S Amt',
       accessor: 'ttlOsAmt',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -368,8 +350,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         </span>
       )
     },
-    { 
-      header: '% of Total', 
+    {
+      header: '% of Total',
       accessor: 'percentage',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -378,8 +360,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
         </span>
       )
     },
-    { 
-      header: 'Total Unpaid', 
+    {
+      header: 'Total Unpaid',
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: TableRow) => (
@@ -390,14 +372,11 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
     }
   ];
 
-
-  
-  // Combine columns based on view type, just like in DebtByStationTable.tsx
-  const columns = viewType === 'tradeReceivable' 
+  // Combine columns based on view type
+  const columns = viewType === 'tradeReceivable'
     ? [...baseColumns, ...tradeReceivableColumns]
     : [...baseColumns, ...agedDebtColumns];
 
-    
   // Header right with data summary
   const headerRight = (
     <div className="text-sm text-gray-600">
@@ -407,8 +386,8 @@ export const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({
 
   return (
     <Card title="Summary Aged Debt By ADID" headerRight={headerRight}>
-      <Table 
-        columns={columns} 
+      <Table
+        columns={columns}
         data={organizedData}
         loading={loading}
         emptyMessage="No account determination (ADID) debt data available"

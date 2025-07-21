@@ -130,3 +130,102 @@ export interface DebtByAccountClassApiResponse {
     };
   };
 }
+
+
+export interface DebtByAccountByADIDRow {
+  businessArea: string;
+  station: string;
+  adid: string;
+  numberOfAccounts: number;
+  ttlOSAmt: number;
+  percentOfTotal: string;
+  totalUndue: number;
+  curMthUnpaid: number;
+  totalUnpaid: number;
+  mitAmt: number;
+}
+
+export interface DebtByAccountByADIDApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    data: DebtByAccountByADIDRow[];
+    stationTotals: Array<{
+      businessArea: string;
+      station: string;
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    }>;
+    grandTotal: {
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    };
+  };
+}
+
+export interface DebtByStaffRow {
+  businessArea: string;
+  station: string;
+  numberOfAccounts: number;
+  ttlOSAmt: number;
+  percentOfTotal: string;
+  totalUndue: number;
+  curMthUnpaid: number;
+  totalUnpaid: number;
+}
+
+export interface DebtByStaffApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    data: DebtByStaffRow[];
+    grandTotal: {
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+    };
+  };
+}
+
+export interface DebtBySmerSegmentRow {
+  businessArea: string;
+  station: string;
+  segment: string;
+  numberOfAccounts: number;
+  ttlOSAmt: number;
+  percentOfTotal: string;
+  totalUndue: number;
+  curMthUnpaid: number;
+  totalUnpaid: number;
+  mitAmt: number;
+}
+
+export interface DebtBySmerSegmentApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    data: DebtBySmerSegmentRow[];
+    grandTotal: {
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    };
+  };
+}

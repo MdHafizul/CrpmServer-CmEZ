@@ -1,5 +1,7 @@
 import axios from 'axios';
-import type { SummaryCardApiResponse, UploadResponse, DebtByAccountClassApiResponse } from '../types/dashboard.type';
+import type { SummaryCardApiResponse, UploadResponse, DebtByAccountClassApiResponse, DebtByAccountByADIDApiResponse, DebtByStaffApiResponse,
+  DebtBySmerSegmentApiResponse } from '../types/dashboard.type';
+
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
@@ -36,3 +38,24 @@ export const getDebtByAccountClassData = async (filename: string , body:any) =>{
   const response = await axios.post<DebtByAccountClassApiResponse>(url, body);
   return response.data;
 }
+
+export const getDebtByAdidData = async (filename: string, body: any) => {
+  const url = `${API_BASE_URL}/api/v2/crpm/debt-by-adid/${encodeURIComponent(filename)}`;
+  const response = await axios.post<DebtByAccountByADIDApiResponse>(url, body);
+  return response.data;
+};
+
+export const getDebtByStaffData = async (filename: string, body: any) => {
+  const url = `${API_BASE_URL}/api/v2/crpm/debt-by-staff/${encodeURIComponent(filename)}`;
+  const response = await axios.post<DebtByStaffApiResponse>(url, body);
+  return response.data;
+}
+
+export const getDebtBySmerSegmentData = async (
+  filename: string,
+  body: any
+): Promise<DebtBySmerSegmentApiResponse> => {
+  const url = `${API_BASE_URL}/api/v2/crpm/debt-by-smer-segment/${encodeURIComponent(filename)}`;
+  const response = await axios.post<DebtBySmerSegmentApiResponse>(url, body);
+  return response.data;
+};
