@@ -218,6 +218,17 @@ export interface DebtBySmerSegmentApiResponse {
   filename: string;
   data: {
     data: DebtBySmerSegmentRow[];
+    stationTotals: Array<{
+      businessArea: string;
+      station: string;
+      totalNumberOfAccounts: number;
+      totalTtlOSAmt: number;
+      totalPercentOfTotal: string;
+      totalUndue: number;
+      totalCurMthUnpaid: number;
+      totalUnpaid: number;
+      totalMITAmt: number;
+    }>;
     grandTotal: {
       totalNumberOfAccounts: number;
       totalTtlOSAmt: number;

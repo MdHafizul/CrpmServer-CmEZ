@@ -5,7 +5,7 @@ import { SummaryCardsContainer } from '../components/dashboard/SummaryCard';
 import FilterSection from '../components/dashboard/FilterSection';
 import DebtByStationTable from '../components/dashboard/DebtByStationTable';
 import AccClassDebtSummary from '../components/dashboard/AccClassDebtSummary';
-import { AccDefinitionDebt } from '../components/dashboard/AccDefinitionDebt';
+import AccDefinitionDebt  from '../components/dashboard/AccDefinitionDebt';
 import StaffDebtTable from '../components/dashboard/StaffDebtTable';
 import SmerSegmentDebtTable from '../components/dashboard/SmerSegmentDebtTable';
 
@@ -125,9 +125,10 @@ const DashboardPage: React.FC = () => {
     filters.smerSegments
   ]);
 
-  // Map API data for AccClassDebtSummary
-  const accClassSummaryData = debtByAccountClassData?.data
-    ? debtByAccountClassData.data.map(row => ({
+const accClassSummaryData = debtByAccountClassData?.data
+  ? [
+      // Individual account class rows
+      ...debtByAccountClassData.data.map(row => ({
         businessArea: row.businessArea,
         station: row.station,
         accClass: row.accountClass,
@@ -139,8 +140,39 @@ const DashboardPage: React.FC = () => {
         totalUnpaid: row.totalUnpaid,
         mitAmt: row.mitAmt,
         percentage: parseFloat(row.percentOfTotal),
-      }))
-    : [];
+      })),
+      // Station totals
+      ...debtByAccountClassData.stationTotals.map(stationTotal => ({
+        businessArea: stationTotal.businessArea,
+        station: stationTotal.station,
+        accClass: 'Total',
+        numOfAccounts: stationTotal.totalNumberOfAccounts,
+        debtAmount: stationTotal.totalTtlOSAmt,
+        totalUndue: stationTotal.totalUndue,
+        curMthUnpaid: stationTotal.totalCurMthUnpaid,
+        ttlOsAmt: stationTotal.totalTtlOSAmt,
+        totalUnpaid: stationTotal.totalUnpaid,
+        mitAmt: stationTotal.totalMITAmt,
+        percentage: parseFloat(stationTotal.totalPercentOfTotal),
+        isTotal: true,
+      })),
+      // Grand total
+      {
+        businessArea: 'Grand Total',
+        station: '',
+        accClass: 'Total',
+        numOfAccounts: debtByAccountClassData.grandTotal.totalNumberOfAccounts,
+        debtAmount: debtByAccountClassData.grandTotal.totalTtlOSAmt,
+        totalUndue: debtByAccountClassData.grandTotal.totalUndue,
+        curMthUnpaid: debtByAccountClassData.grandTotal.totalCurMthUnpaid,
+        ttlOsAmt: debtByAccountClassData.grandTotal.totalTtlOSAmt,
+        totalUnpaid: debtByAccountClassData.grandTotal.totalUnpaid,
+        mitAmt: debtByAccountClassData.grandTotal.totalMITAmt,
+        percentage: parseFloat(debtByAccountClassData.grandTotal.totalPercentOfTotal),
+        isGrandTotal: true,
+      }
+    ]
+  : [];
 
   // Fetch debt by ADID data
   useEffect(() => {
@@ -317,6 +349,7 @@ useEffect(() => {
 
 const smerSegmentTableData = debtBySmerSegmentData?.data
   ? [
+      // Individual segment rows
       ...debtBySmerSegmentData.data.map(row => ({
         businessArea: row.businessArea,
         station: row.station,
@@ -330,6 +363,22 @@ const smerSegmentTableData = debtBySmerSegmentData?.data
         mitAmt: row.mitAmt,
         percentage: parseFloat(row.percentOfTotal),
       })),
+      // Station totals
+      ...debtBySmerSegmentData.stationTotals.map(stationTotal => ({
+        businessArea: stationTotal.businessArea,
+        station: stationTotal.station,
+        segment: 'Total',
+        numOfAccounts: stationTotal.totalNumberOfAccounts,
+        ttlOsAmt: stationTotal.totalTtlOSAmt,
+        debtAmount: stationTotal.totalTtlOSAmt,
+        totalUndue: stationTotal.totalUndue,
+        curMthUnpaid: stationTotal.totalCurMthUnpaid,
+        totalUnpaid: stationTotal.totalUnpaid,
+        mitAmt: stationTotal.totalMITAmt,
+        percentage: parseFloat(stationTotal.totalPercentOfTotal),
+        isTotal: true,
+      })),
+      // Grand total
       {
         businessArea: 'Grand Total',
         station: '',
@@ -346,7 +395,6 @@ const smerSegmentTableData = debtBySmerSegmentData?.data
       }
     ]
   : [];
-  
 
   return (
     <Layout>
@@ -422,19 +470,20 @@ const smerSegmentTableData = debtBySmerSegmentData?.data
             accDefinitions: filters.accDefinitions,
           }}
         />
+<SmerSegmentDebtTable
+  data={smerSegmentTableData}
+  stationTotals={debtBySmerSegmentData?.stationTotals || []}
+  grandTotal={debtBySmerSegmentData?.grandTotal}
+  loading={loading}
+  viewType={filters.viewType}
+  onViewTypeChange={filters.setViewType}
+/>
         <StaffDebtTable
           data={staffDebtTableData}
           loading={loading}
           viewType={filters.viewType}
           onViewTypeChange={filters.setViewType}
         />
-      <SmerSegmentDebtTable
-        data={smerSegmentTableData}
-        loading={loading}
-        viewType={filters.viewType}
-        onViewTypeChange={filters.setViewType}
-      />
-
       </div>
     </Layout>
   );

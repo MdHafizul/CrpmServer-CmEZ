@@ -477,7 +477,8 @@ exports.processDebtBySmerSegmentTR = async (parquetFilename, filters = {}) => {
   `;
 
   const result = await dbAll(query);
-  return formatSMERSegmentSummary(result, getBusinessAreaName, false, filters);
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'GNLA','BLANKS'];
+  return formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, false, filters);
 };
 // Aged Debt view
 exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {}) => {

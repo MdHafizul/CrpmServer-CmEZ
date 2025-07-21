@@ -12,54 +12,48 @@ interface FilterSectionProps {
     accStatus: string;
     onAccStatusChange: (value: string) => void;
     accStatusOptions: { value: string; label: string }[];
-    
+
     accClass: string;
     onAccClassChange: (value: string) => void;
     accClassOptions: { value: string; label: string }[];
-    
-    // Single-select version (keep for compatibility)
+
     accDefinition: string;
     onAccDefinitionChange: (value: string) => void;
     accDefinitionOptions: { value: string; label: string }[];
-    
-    // Multi-select version
+
     accDefinitions: string[];
     setAccDefinitions: (values: string[]) => void;
-    
+
     netPositiveBalance: string;
     onNetPositiveBalanceChange: (value: string) => void;
     netPositiveBalanceOptions: { value: string; label: string }[];
-    
+
     businessArea: string;
     onBusinessAreaChange: (value: string) => void;
     businessAreaOptions: { value: string; label: string }[];
-    
-    // Multi-select versions
+
     businessAreas: string[];
     setBusinessAreas: (values: string[]) => void;
-    
+
     monthsOutstandingBracket: string;
     onMonthsOutstandingBracketChange: (value: string) => void;
     monthsOutstandingBracketOptions: { value: string; label: string }[];
-    
+
     debtRange: string;
     onDebtRangeChange: (value: string) => void;
     debtRangeOptions: { value: string; label: string }[];
-    
+
     smerSegments?: string[];
     setSmerSegments?: (values: string[]) => void;
     smerSegmentOptions: { value: string; label: string }[];
-    
-    // Government type filter for AccClassDebtSummary
+
     governmentType: string;
     onGovernmentTypeChange: (value: string) => void;
     governmentTypeOptions: { value: string; label: string }[];
-    
-    // Centralized view type
+
     viewType: 'tradeReceivable' | 'agedDebt';
     onViewTypeChange: (value: 'tradeReceivable' | 'agedDebt') => void;
 
-    // MIT filter - add to the interface
     mitFilter: string;
     onMitFilterChange: (value: string) => void;
     mitFilterOptions: { value: string; label: string }[];
@@ -68,36 +62,34 @@ interface FilterSectionProps {
 
 const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
   const [isExpanded, setIsExpanded] = useState(true);
-  
-  // Check if any filters are active (not 'all')
-  const hasActiveFilters = 
-    filters.businessArea !== 'all' ||
-    filters.accStatus !== 'all' ||
-    filters.accClass !== 'all' ||
-    filters.accDefinition !== 'all' ||
-    filters.netPositiveBalance !== 'all' ||
-    filters.monthsOutstandingBracket !== 'all' ||
-    filters.debtRange !== 'all' ||
-    // Remove single-select smerSegment from active check
-    // filters.smerSegment !== 'all'
+
+  // Check if any filters are active (not 'all' and not empty)
+  const hasActiveFilters =
+    (filters.businessArea && filters.businessArea !== 'all') ||
+    (filters.accStatus && filters.accStatus !== 'all') ||
+    (filters.accClass && filters.accClass !== 'all') ||
+    (filters.accDefinition && filters.accDefinition !== 'all') ||
+    (filters.netPositiveBalance && filters.netPositiveBalance !== 'all') ||
+    (filters.monthsOutstandingBracket && filters.monthsOutstandingBracket !== 'all') ||
+    (filters.debtRange && filters.debtRange !== 'all') ||
     (filters.smerSegments && filters.smerSegments.length > 0);
 
   // Count active filters
-  const activeFilterCount = [
-    filters.businessArea,
-    filters.accStatus,
-    filters.accClass,
-    filters.accDefinition,
-    filters.netPositiveBalance,
-    filters.monthsOutstandingBracket,
-    filters.debtRange,
-    // Remove single-select smerSegment from count
-    // filters.smerSegment
-  ].filter(value => value !== 'all').length + ((filters.smerSegments && filters.smerSegments.length > 0) ? 1 : 0);
+  const activeFilterCount =
+    [
+      filters.businessArea,
+      filters.accStatus,
+      filters.accClass,
+      filters.accDefinition,
+      filters.netPositiveBalance,
+      filters.monthsOutstandingBracket,
+      filters.debtRange,
+    ].filter(value => value && value !== 'all').length +
+    ((filters.smerSegments && filters.smerSegments.length > 0) ? 1 : 0);
 
   // Helper function to get filter display value
   const getFilterDisplayValue = (value: string, options: { value: string; label: string }[]) => {
-    if (value === 'all') return null;
+    if (!value || value === 'all') return null;
     const option = options.find(opt => opt.value === value);
     return option?.label || value;
   };
@@ -105,7 +97,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
   // Helper function to get multi-select display values
   const getMultiSelectDisplayValues = (values: string[], options: { value: string; label: string }[]) => {
     if (!values.length) return null;
-    
     return values.map(value => {
       const option = options.find(opt => opt.value === value);
       return option?.label || value;
@@ -113,19 +104,15 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
   };
 
   const clearAllFilters = () => {
-    filters.onBusinessAreaChange('all');
-    filters.onAccStatusChange('all');
-    filters.onAccClassChange('all');
-    filters.onAccDefinitionChange('all');
-    filters.onNetPositiveBalanceChange('all');
-    filters.onMonthsOutstandingBracketChange('all');
-    filters.onDebtRangeChange('all');
-    // Remove single-select smerSegment clear
-    // filters.onSmerSegmentChange('all');
-    filters.onGovernmentTypeChange('all');
-    filters.onMitFilterChange('all');
-    
-    // Clear multi-select filters
+    filters.onBusinessAreaChange('');
+    filters.onAccStatusChange('');
+    filters.onAccClassChange('');
+    filters.onAccDefinitionChange('');
+    filters.onNetPositiveBalanceChange('');
+    filters.onMonthsOutstandingBracketChange('');
+    filters.onDebtRangeChange('');
+    filters.onGovernmentTypeChange('');
+    filters.onMitFilterChange('');
     filters.setBusinessAreas([]);
     filters.setAccDefinitions([]);
     filters.setSmerSegments && filters.setSmerSegments([]);
@@ -138,7 +125,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
         {/* View Type Toggle at the top */}
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Data View</h3>
-          
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Main View Type Toggle */}
             <div className="space-y-2">
@@ -166,7 +152,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                 </button>
               </div>
             </div>
-            
             {/* Government Type Toggle for AccClassDebtSummary */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-600">Account Class Type</label>
@@ -203,8 +188,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                 </button>
               </div>
             </div>
-            
-            {/* MIT Filter Toggle - Added from DetailedTable */}
+            {/* MIT Filter Toggle */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-600">MIT Filter</label>
               <div className="flex bg-gray-100 rounded-lg p-1">
@@ -242,9 +226,8 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
             </div>
           </div>
         </div>
-        
         {/* Filters Section */}
-        <div 
+        <div
           className="px-6 py-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors"
           onClick={() => setIsExpanded(!isExpanded)}
         >
@@ -281,7 +264,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
               </svg>
             </div>
           </div>
-
           {/* Active Filters Summary */}
           {hasActiveFilters && !isExpanded && (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -310,26 +292,24 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   Balance: {getFilterDisplayValue(filters.netPositiveBalance, filters.netPositiveBalanceOptions)}
                 </span>
               )}
-{getFilterDisplayValue(filters.monthsOutstandingBracket, filters.monthsOutstandingBracketOptions) && (
-  <span 
-    className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border"
-    style={{
-      backgroundColor: getBracketBackgroundColor(filters.monthsOutstandingBracket),
-      color: getBracketTextColor(filters.monthsOutstandingBracket),
-      borderColor: getBracketColor(filters.monthsOutstandingBracket) + '60'
-    }}
-  >
-    Range: {getFilterDisplayValue(filters.monthsOutstandingBracket, filters.monthsOutstandingBracketOptions)}
-  </span>
-)}
+              {getFilterDisplayValue(filters.monthsOutstandingBracket, filters.monthsOutstandingBracketOptions) && (
+                <span
+                  className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border"
+                  style={{
+                    backgroundColor: getBracketBackgroundColor(filters.monthsOutstandingBracket),
+                    color: getBracketTextColor(filters.monthsOutstandingBracket),
+                    borderColor: getBracketColor(filters.monthsOutstandingBracket) + '60'
+                  }}
+                >
+                  Range: {getFilterDisplayValue(filters.monthsOutstandingBracket, filters.monthsOutstandingBracketOptions)}
+                </span>
+              )}
               {/* New Debt Range Filter Badge */}
               {getFilterDisplayValue(filters.debtRange, filters.debtRangeOptions) && (
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-200">
                   Debt: {getFilterDisplayValue(filters.debtRange, filters.debtRangeOptions)}
                 </span>
               )}
-              
-              {/* Remove single-select SMER Segment Filter Badge */}
               {/* Multi-select SMER Segment Filter Badge */}
               {filters.smerSegments && filters.smerSegments.length > 0 && (
                 <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -339,7 +319,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
             </div>
           )}
         </div>
-
         {/* Filter Controls */}
         {isExpanded && (
           <div className="p-6">
@@ -372,14 +351,13 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   </div>
                 )}
               </div>
-
               {/* Account Status Filter */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-800">
                     Account Status
                   </label>
-                  {filters.accStatus !== 'all' && (
+                  {filters.accStatus && filters.accStatus !== 'all' && (
                     <span className="text-xs text-green-600 font-medium">
                       Active
                     </span>
@@ -392,20 +370,19 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   placeholder="Select Status"
                   className="w-full"
                 />
-                {filters.accStatus !== 'all' && (
+                {filters.accStatus && filters.accStatus !== 'all' && (
                   <div className="text-xs text-gray-600 bg-green-50 px-2 py-1 rounded">
                     Selected: {getFilterDisplayValue(filters.accStatus, filters.accStatusOptions)}
                   </div>
                 )}
               </div>
-
               {/* Account Class Filter */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-800">
                     Account Class
                   </label>
-                  {filters.accClass !== 'all' && (
+                  {filters.accClass && filters.accClass !== 'all' && (
                     <span className="text-xs text-purple-600 font-medium">
                       Active
                     </span>
@@ -418,13 +395,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   placeholder="Select Class"
                   className="w-full"
                 />
-                {filters.accClass !== 'all' && (
+                {filters.accClass && filters.accClass !== 'all' && (
                   <div className="text-xs text-gray-600 bg-purple-50 px-2 py-1 rounded">
                     Selected: {getFilterDisplayValue(filters.accClass, filters.accClassOptions)}
                   </div>
                 )}
               </div>
-
               {/* ADID Filter - Multi-select version */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -453,14 +429,13 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   </div>
                 )}
               </div>
-
               {/* Balance Type Filter */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-800">
                     Balance Type
                   </label>
-                  {filters.netPositiveBalance !== 'all' && (
+                  {filters.netPositiveBalance && filters.netPositiveBalance !== 'all' && (
                     <span className="text-xs text-red-600 font-medium">
                       Active
                     </span>
@@ -473,20 +448,19 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   placeholder="Select Balance Type"
                   className="w-full"
                 />
-                {filters.netPositiveBalance !== 'all' && (
+                {filters.netPositiveBalance && filters.netPositiveBalance !== 'all' && (
                   <div className="text-xs text-gray-600 bg-red-50 px-2 py-1 rounded">
                     Selected: {getFilterDisplayValue(filters.netPositiveBalance, filters.netPositiveBalanceOptions)}
                   </div>
                 )}
               </div>
-
               {/* Months Outstanding Bracket Filter */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-800">
                     Aging Bucket Range
                   </label>
-                  {filters.monthsOutstandingBracket !== 'all' && (
+                  {filters.monthsOutstandingBracket && filters.monthsOutstandingBracket !== 'all' && (
                     <span className="text-xs text-indigo-600 font-medium">
                       Active
                     </span>
@@ -499,20 +473,19 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   placeholder="Select Range"
                   className="w-full"
                 />
-                {filters.monthsOutstandingBracket !== 'all' && (
+                {filters.monthsOutstandingBracket && filters.monthsOutstandingBracket !== 'all' && (
                   <div className="text-xs text-gray-600 bg-indigo-50 px-2 py-1 rounded">
                     Selected: {getFilterDisplayValue(filters.monthsOutstandingBracket, filters.monthsOutstandingBracketOptions)}
                   </div>
                 )}
               </div>
-
               {/* Debt Range Filter */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-semibold text-gray-800">
                     Total Outstanding Range
                   </label>
-                  {filters.debtRange !== 'all' && (
+                  {filters.debtRange && filters.debtRange !== 'all' && (
                     <span className="text-xs text-yellow-600 font-medium">
                       Active
                     </span>
@@ -525,13 +498,12 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                   placeholder="Select Debt Range"
                   className="w-full"
                 />
-                {filters.debtRange !== 'all' && (
+                {filters.debtRange && filters.debtRange !== 'all' && (
                   <div className="text-xs text-gray-600 bg-yellow-50 px-2 py-1 rounded">
                     Selected: {getFilterDisplayValue(filters.debtRange, filters.debtRangeOptions)}
                   </div>
                 )}
               </div>
-              
               {/* SMER Segment Filter - Multi-select version */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -561,7 +533,6 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
                 )}
               </div>
             </div>
-
             {/* Action Buttons */}
             {hasActiveFilters && (
               <div className="mt-6 pt-4 border-t border-gray-200">
@@ -589,5 +560,3 @@ const FilterSection: React.FC<FilterSectionProps> = ({ filters }) => {
 };
 
 export default FilterSection;
-
-

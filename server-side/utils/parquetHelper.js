@@ -450,7 +450,7 @@ function formatADIDSummary(result, getBusinessAreaName, adidOrder, isAgedDebtVie
 }
 
 // Table 5: By SMER Segment
-function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = false, filters = {}) {
+function formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, isAgedDebtView = false, filters = {}) {
   const totalAccounts = result.reduce((sum, row) => sum + Number(row["Number of Accounts"]), 0);
   const totalTtlOSAmt = result.reduce((sum, row) => sum + Number(row["TTL O/S Amt"]), 0);
   const totalMITAmt = result.reduce((sum, row) => sum + (Number(row["MIT Amt"]) || 0), 0);
@@ -507,6 +507,48 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = 
   });
 
   // Station totals (optional, not usually needed for SMER, but can be added like others)
+
+  // Station totals
+  const stationTotals = Object.values(grouped).map(station => {
+    let totalNumberOfAccounts = 0;
+    let totalTtlOSAmt = 0;
+    let totalUndue = 0;
+    let totalCurMthUnpaid = 0;
+    let totalUnpaid = 0;
+    let totalMITAmtStation = 0;
+    SmerSegmentOrder.forEach(smerSegment => {
+      const smerSegmentData = station.segments[smerSegment]; // <-- fix here
+      if (smerSegmentData) {
+        totalNumberOfAccounts += smerSegmentData.numberOfAccounts;
+        totalTtlOSAmt += smerSegmentData.ttlOSAmt;
+        if (!isAgedDebtView) {
+          totalUndue += smerSegmentData.totalUndue;
+          totalCurMthUnpaid += smerSegmentData.curMthUnpaid;
+          totalUnpaid += smerSegmentData.totalUnpaid;
+          if (filters && filters.mitType === "MIT") {
+            totalMITAmtStation += smerSegmentData.mitAmt || 0;
+          }
+        }
+      }
+    });
+    const base = {
+      businessArea: station.businessArea,
+      station: station.station,
+      totalNumberOfAccounts,
+      totalTtlOSAmt,
+      totalPercentOfTotal: formatPercent(totalNumberOfAccounts, totalAccounts)
+    };
+    if (!isAgedDebtView) {
+      base.totalUndue = totalUndue;
+      base.totalCurMthUnpaid = totalCurMthUnpaid;
+      base.totalUnpaid = totalUnpaid;
+      if (filters && filters.mitType === "MIT") {
+        base.totalMITAmt = totalMITAmtStation;
+      }
+    }
+    return base;
+  }).sort((a, b) => Number(b.totalPercentOfTotal) - Number(a.totalPercentOfTotal));
+
   // Grand total
   const grandTotal = {
     totalNumberOfAccounts: totalAccounts,
@@ -522,7 +564,7 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, isAgedDebtView = 
     }
   }
 
-  return { data, grandTotal };
+  return { data, stationTotals, grandTotal };
 }
 
 // Table 6: Detailed Table Summary
