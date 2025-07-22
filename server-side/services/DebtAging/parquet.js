@@ -479,7 +479,7 @@ exports.processDebtBySmerSegmentTR = async (parquetFilename, filters = {}) => {
   `;
 
   const result = await dbAll(query);
-  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'GNLA','BLANKS'];
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB', 'BLANKS'];
   return formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, false, filters);
 };
 // Aged Debt view
@@ -503,7 +503,7 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
 
   const result = await dbAll(query);
   
-  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'GNLA','BLANKS'];
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB','BLANKS'];
   return formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, true, filters);
 };
 
@@ -769,21 +769,73 @@ exports.getDriverTreeSummary = async (parquetFilename) => {
 
   return formatDriverTreeSummary({ root, statusClassRows, adidRows });
 };
-// Directed Graph summary API
 
+// Directed Graph summary API
 exports.getDirectedGraphSummary = async (parquetFilename) => {
   await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  const query = `
-    SELECT 
+
+  // Root: Total Aged Debt and Accounts
+  const rootQuery = `
+    SELECT
+      SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS totalAgedDebt,
+      COUNT(DISTINCT "Contract Acc") AS totalNumOfAcc
+    FROM read_parquet('${normalizedPath}')
+  `;
+  const [rootRow] = await dbAll(rootQuery);
+  const totalAgedDebt = Number(rootRow.totalAgedDebt) || 0;
+  const totalNumOfAcc = Number(rootRow.totalNumOfAcc) || 0;
+
+  // Level 2 & 3: Status + SMER Segment, with value and accounts
+  const statusSmerQuery = `
+    SELECT
       CAST("Acc Status" AS VARCHAR) AS "Acc Status",
       CAST("SMER Segment" AS VARCHAR) AS "SMER Segment",
       SUM(CAST("TTL O/S Amt" AS DOUBLE)) AS "TTL O/S Amt",
       COUNT(DISTINCT "Contract Acc") AS "Number of Accounts"
     FROM read_parquet('${normalizedPath}')
     GROUP BY "Acc Status", "SMER Segment"
-    ORDER BY "Acc Status", "SMER Segment"
   `;
-  const result = await dbAll(query);
-  return formatDirectedGraphSummary(result);
+  const rows = await dbAll(statusSmerQuery);
+
+  // Order for SMER Segments
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB', 'BLANKS'];
+
+  // Group by status
+  const statusMap = {};
+  rows.forEach(row => {
+    const status = row["Acc Status"] || "UNKNOWN";
+    const smer = row["SMER Segment"] || "BLANKS";
+    const value = Number(row["TTL O/S Amt"]) || 0;
+    const numOfAcc = Number(row["Number of Accounts"]) || 0;
+    if (!statusMap[status]) statusMap[status] = {};
+    statusMap[status][smer] = { value, numOfAcc };
+  });
+
+  // Build tree structure
+  const branches = Object.keys(statusMap).map(status => {
+    const childrenArr = SmerSegmentOrder.map(seg => ({
+      name: seg,
+      value: statusMap[status][seg]?.value || 0,
+      numOfAcc: statusMap[status][seg]?.numOfAcc || 0
+    }));
+    const statusValue = childrenArr.reduce((a, b) => a + b.value, 0);
+    const statusAcc = childrenArr.reduce((a, b) => a + b.numOfAcc, 0);
+
+    return {
+      name: status,
+      value: statusValue,
+      numOfAcc: statusAcc,
+      children: childrenArr
+    };
+  });
+
+  return {
+    root: {
+      name: "Total Aged Debt",
+      value: totalAgedDebt,
+      numOfAcc: totalNumOfAcc
+    },
+    branches
+  };
 };

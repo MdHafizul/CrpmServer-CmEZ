@@ -65,3 +65,9 @@ export const getDriverTreeSummary = async (filename: string) => {
   const response = await axios.post(url);
   return response.data;
 };
+
+export const getDirectedGraphSummary = async (filename: string) => {
+  const url = `${API_BASE_URL}/api/v2/crpm/directed-graph-summary/${encodeURIComponent(filename)}`;
+  const response = await axios.post(url);
+  return response.data;
+};

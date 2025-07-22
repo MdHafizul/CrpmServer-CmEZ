@@ -657,39 +657,58 @@ function formatDriverTreeSummary({ root, statusClassRows, adidRows }) {
 
 // Directed Graph summary for frontend visualization
 function formatDirectedGraphSummary(result) {
-  // Group by SMER Segment, status, etc.
-  const nodes = [];
-  const edges = [];
+  // Order for SMER Segments
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB', 'BLANKS'];
 
-  // Example: group by status and SMER Segment
+  // Calculate total aged debt and accounts
+  let totalValue = 0;
+  let totalAccounts = 0;
+  const statusMap = {};
+
   result.forEach(row => {
-    const status = row["Acc Status"];
-    const segment = row["SMER Segment"] || "BLANKS";
-    const nodeId = `${status}-${segment}`;
-    nodes.push({
-      id: nodeId,
-      label: segment,
-      level: status === "active" ? 1 : 2,
-      color: status === "active" ? "#059669" : "#dc2626",
-      amount: Number(row["TTL O/S Amt"]) || 0,
-      accounts: Number(row["Number of Accounts"]) || 0,
-      parents: [status]
-    });
-    // Add status nodes if not already present
-    if (!nodes.find(n => n.id === status)) {
-      nodes.push({
-        id: status,
-        label: status.charAt(0).toUpperCase() + status.slice(1),
-        level: 0,
-        color: status === "active" ? "#059669" : "#dc2626"
-      });
-    }
-    edges.push({ from: status, to: nodeId, color: status === "active" ? "#059669" : "#dc2626" });
+    const status = row["Acc Status"] || "UNKNOWN";
+    const smer = row["SMER Segment"] || "BLANKS";
+    const value = Number(row["TTL O/S Amt"]) || 0;
+    const numOfAcc = Number(row["Number of Accounts"]) || 0;
+
+    totalValue += value;
+    totalAccounts += numOfAcc;
+
+    if (!statusMap[status]) statusMap[status] = {};
+    statusMap[status][smer] = {
+      value,
+      numOfAcc
+    };
   });
 
-  return { nodes, edges };
-}
+  // Build tree structure
+  const branches = Object.keys(statusMap).map(status => {
+    // Sum value and accounts for this status
+    const childrenArr = SmerSegmentOrder.map(seg => ({
+      name: seg,
+      value: statusMap[status][seg]?.value || 0,
+      numOfAcc: statusMap[status][seg]?.numOfAcc || 0
+    }));
+    const statusValue = childrenArr.reduce((a, b) => a + b.value, 0);
+    const statusAcc = childrenArr.reduce((a, b) => a + b.numOfAcc, 0);
 
+    return {
+      name: status,
+      value: statusValue,
+      numOfAcc: statusAcc,
+      children: childrenArr
+    };
+  });
+
+  return {
+    root: {
+      name: "Total Aged Debt",
+      value: totalValue,
+      numOfAcc: totalAccounts
+    },
+    branches
+  };
+}
 module.exports = {
   convertBigIntToNumber,
   getFileReader,

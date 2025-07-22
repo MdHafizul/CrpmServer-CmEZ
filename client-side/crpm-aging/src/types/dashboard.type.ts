@@ -257,3 +257,20 @@ export interface DriverTreeApiResponse {
     branches: DriverTreeNode[];
   };
 }
+
+
+export interface DirectedGraphNode {
+  name: string;
+  value: number;
+  numOfAcc: number;
+  children?: DirectedGraphNode[];
+}
+
+export interface DirectedGraphApiResponse {
+  success: boolean;
+  filename: string;
+  data: {
+    root: DirectedGraphNode;
+    branches: DirectedGraphNode[];
+  };
+}
