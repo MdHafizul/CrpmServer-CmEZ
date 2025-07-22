@@ -1,7 +1,48 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
 import { getDirectedGraphSummary } from '../../../services/api';
-import type { DirectedGraphApiResponse } from '../../../types/dashboard.type';
+// Fixed node positions for the vertical tree layout
+const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
+  root: { x: 300, y: 50 },
+  active: { x: -50, y: 150 },
+  inactive: { x: 650, y: 150 },
+  // Active children
+  'active-emrb': { x: -270, y: 250 },
+  'active-hres': { x: -125, y: 250 },
+  'active-medb': { x: 25, y: 250 },
+  'active-gnla': { x: -200, y: 350 },
+  'active-masr': { x: -50, y: 350 },
+  'active-micb': { x: 100, y: 350 },
+  'active-smlb': { x: 175, y: 250 },
+  'active-blanks': { x: 250, y: 350 },
+  // Inactive children
+  'inactive-emrb': { x: 425, y: 250 },
+  'inactive-hres': { x: 575, y: 250 },
+  'inactive-medb': { x: 725, y: 250 },
+  'inactive-gnla': { x: 500, y: 350 },
+  'inactive-masr': { x: 650, y: 350 },
+  'inactive-micb': { x: 800, y: 350 },
+  'inactive-smlb': { x: 875, y: 250 },
+  'inactive-blanks': { x: 950, y: 350 },
+};
+
+const smerColors: Record<string, string> = {
+  EMRB: '#3b82f6',
+  HRES: '#8b5cf6',
+  MEDB: '#ec4899',
+  GNLA: '#10b981',
+  MASR: '#6366f1',
+  MICB: '#ef4444',
+  SMLB: '#ef4444',
+  BLANKS: '#ef4444'
+};
+
+const getStatusColor = (name: string) =>
+  name === 'Active' ? '#059669' : name === 'Inactive' ? '#dc2626' : '#1f2937';
+
+const smerOrder = ['EMRB', 'HRES', 'MEDB', 'GNLA', 'MASR', 'MICB', 'SMLB', 'BLANKS'];
+
+const FILENAME = '1750132052464-aging besar.parquet';
 
 interface Node {
   id: string;
@@ -13,157 +54,19 @@ interface Node {
   amount?: number;
   accounts?: number;
 }
-
 interface Edge {
   from: string;
   to: string;
   color: string;
 }
-
 interface GraphData {
   nodes: Node[];
   edges: Edge[];
 }
 
-interface DirectedGraphProps {
-  title?: string;
-}
-
-const FILENAME = '1750132052464-aging besar.parquet';
-const SmerSegmentOrder = ['EMRB', 'HRES', 'MEDB', 'GNLA', 'MASR', 'MICB', 'SNLB', 'BLANKS'];
-
-const smerColors: Record<string, string> = {
-  EMRB: '#3b82f6',
-  HRES: '#8b5cf6',
-  MEDB: '#ec4899',
-  GNLA: '#10b981',
-  MASR: '#6366f1',
-  MICB: '#ef4444',
-  SNLB: '#ef4444',
-  BLANKS: '#ef4444'
-};
-
-const getStatusColor = (name: string) =>
-  name === 'Active' ? '#059669' : name === 'Inactive' ? '#dc2626' : '#1f2937';
-
-const getNodeId = (status: string, smer: string, idx: number) => `${status.toLowerCase()}-${smer.toLowerCase()}-${idx}`;
-
-// Calculate node positions for a balanced tree
-function calculatePositions(apiData: DirectedGraphApiResponse['data']): GraphData {
-  if (!apiData) return { nodes: [], edges: [] };
-
-  const nodes: Node[] = [];
-  const edges: Edge[] = [];
-
-  // Layout constants
-  const canvasWidth = 1320;
-  const rootY = 50;
-  const statusY = 150;
-  const smerY = 250;
-  const smerY2 = 350;
-  const nodeWidth = 120;
-  const nodeHeight = 70;
-
-  // Root node centered
-  const rootX = canvasWidth / 2;
-  nodes.push({
-    id: 'root',
-    label: apiData.root.name,
-    level: 0,
-    position: { x: rootX, y: rootY },
-    color: '#1f2937',
-    amount: apiData.root.value,
-    accounts: apiData.root.numOfAcc
-  });
-
-  // Level 1: Active/Inactive
-  const statusCount = apiData.branches.length;
-  const statusSpacing = 500;
-  const statusStartX = rootX - ((statusCount - 1) * statusSpacing) / 2;
-
-  apiData.branches.forEach((branch, i) => {
-    const statusId = branch.name.toLowerCase();
-    const statusX = statusStartX + i * statusSpacing;
-    nodes.push({
-      id: statusId,
-      label: branch.name,
-      level: 1,
-      position: { x: statusX, y: statusY },
-      color: getStatusColor(branch.name),
-      parents: ['root'],
-      amount: branch.value,
-      accounts: branch.numOfAcc
-    });
-    edges.push({
-      from: 'root',
-      to: statusId,
-      color: getStatusColor(branch.name)
-    });
-
-    // Level 2: Smer Segments
-    // Filter and order by SmerSegmentOrder
-    const smerNodes = SmerSegmentOrder
-      .map((smer, idx) => {
-        const found = branch.children?.find(c => c.name === smer);
-        return found ? { ...found, smer, idx } : null;
-      })
-      .filter(Boolean) as (NonNullable<DirectedGraphApiResponse['data']['branches'][number]['children']>[number] & { smer: string; idx: number })[];
-
-    // Split into two rows for visual clarity (like your screenshot)
-    const row1 = smerNodes.slice(0, Math.ceil(smerNodes.length / 2));
-    const row2 = smerNodes.slice(Math.ceil(smerNodes.length / 2));
-
-    const smerSpacing = 140;
-    const smerStartX1 = statusX - ((row1.length - 1) * smerSpacing) / 2;
-    const smerStartX2 = statusX - ((row2.length - 1) * smerSpacing) / 2;
-
-    row1.forEach((smerNode, idx) => {
-      const smerId = getNodeId(branch.name, smerNode.smer, smerNode.idx);
-      const smerX = smerStartX1 + idx * smerSpacing;
-      nodes.push({
-        id: smerId,
-        label: smerNode.smer,
-        level: 2,
-        position: { x: smerX, y: smerY },
-        color: smerColors[smerNode.smer] || '#64748b',
-        parents: [statusId],
-        amount: smerNode.value,
-        accounts: smerNode.numOfAcc
-      });
-      edges.push({
-        from: statusId,
-        to: smerId,
-        color: smerColors[smerNode.smer] || '#64748b'
-      });
-    });
-
-    row2.forEach((smerNode, idx) => {
-      const smerId = getNodeId(branch.name, smerNode.smer, smerNode.idx) + '-2';
-      const smerX = smerStartX2 + idx * smerSpacing;
-      nodes.push({
-        id: smerId,
-        label: smerNode.smer,
-        level: 2,
-        position: { x: smerX, y: smerY2 },
-        color: smerColors[smerNode.smer] || '#64748b',
-        parents: [statusId],
-        amount: smerNode.value,
-        accounts: smerNode.numOfAcc
-      });
-      edges.push({
-        from: statusId,
-        to: smerId,
-        color: smerColors[smerNode.smer] || '#64748b'
-      });
-    });
-  });
-
-  return { nodes, edges };
-}
-
-const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }) => {
+const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }) => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomLevel, setZoomLevel] = useState<number>(0.8);
   const [panPosition, setPanPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [dragStart, setDragStart] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
@@ -173,19 +76,77 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
 
   useEffect(() => {
     getDirectedGraphSummary(FILENAME).then(res => {
-      setGraphData(calculatePositions(res.data));
+      const apiData = res.data;
+      // Map API data to fixed node positions
+      const nodes: Node[] = [];
+      const edges: Edge[] = [];
+      // Root
+      nodes.push({
+        id: 'root',
+        label: apiData.root.name,
+        level: 0,
+        position: NODE_POSITIONS.root,
+        color: '#1f2937',
+        amount: apiData.root.value,
+        accounts: apiData.root.numOfAcc
+      });
+      // Level 1: Active/Inactive
+      apiData.branches.forEach((branch: {
+        name: string;
+        value: number;
+        numOfAcc: number;
+        children?: { name: string; value: number; numOfAcc: number }[];
+      }) => {
+        const statusId: string = branch.name.toLowerCase();
+        nodes.push({
+          id: statusId,
+          label: branch.name,
+          level: 1,
+          position: NODE_POSITIONS[statusId],
+          color: getStatusColor(branch.name),
+          parents: ['root'],
+          amount: branch.value,
+          accounts: branch.numOfAcc
+        });
+        edges.push({
+          from: 'root',
+          to: statusId,
+          color: getStatusColor(branch.name)
+        });
+        // Level 2: SMER Segments
+        smerOrder.forEach((smer: string) => {
+          const smerNode = branch.children?.find((c: { name: string }) => c.name === smer);
+          if (smerNode) {
+        const smerId: string = `${statusId}-${smer.toLowerCase()}`;
+        nodes.push({
+          id: smerId,
+          label: smer,
+          level: 2,
+          position: NODE_POSITIONS[smerId],
+          color: smerColors[smer] || '#64748b',
+          parents: [statusId],
+          amount: smerNode.value,
+          accounts: smerNode.numOfAcc
+        });
+        edges.push({
+          from: statusId,
+          to: smerId,
+          color: smerColors[smer] || '#64748b'
+        });
+          }
+        });
+      });
+      setGraphData({ nodes, edges });
     });
   }, []);
 
-  // Helper function to format amounts (show full value, no rounding)
+  // Helper function to format amounts
   const formatAmount = (amount: number | undefined): string => {
     if (amount === undefined) return "";
     if (amount >= 1_000_000) return `RM ${(amount / 1_000_000).toFixed(1)}M`;
     if (amount >= 1_000) return `RM ${(amount / 1_000).toFixed(1)}K`;
     return `RM ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
-
-  // Helper function to format number of accounts (show full value, no rounding)
   const formatAccounts = (accounts: number | undefined): string => {
     if (accounts === undefined) return "";
     if (accounts >= 1_000) return `${(accounts / 1_000).toFixed(1)}K CA`;
@@ -198,7 +159,6 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
     const startY = fromNode.position.y + 35;
     const endX = toNode.position.x;
     const endY = toNode.position.y - 35;
-
     if (Math.abs(startX - endX) < 10) {
       return `M${startX},${startY} L${endX},${endY}`;
     } else {
@@ -214,31 +174,25 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
       const svgData = new XMLSerializer().serializeToString(svg);
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
-
       canvas.width = svg.viewBox.baseVal.width;
       canvas.height = svg.viewBox.baseVal.height;
-
       const img = new Image();
       const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
       const URL = window.URL || window.webkitURL || window;
       const url = URL.createObjectURL(svgBlob);
-
       img.onload = () => {
         if (ctx) {
           ctx.fillStyle = "white";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
-
           const png = canvas.toDataURL("image/png");
           const link = document.createElement('a');
           link.download = 'directed-graph.png';
           link.href = png;
           link.click();
         }
-
         URL.revokeObjectURL(url);
       };
-
       img.src = url;
     }
   };
@@ -258,47 +212,34 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
       setDragStart({ x: e.clientX, y: e.clientY });
     }
   };
-
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging) {
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
-
       setPanPosition(prev => ({
         x: prev.x + dx / zoomLevel,
         y: prev.y + dy / zoomLevel
       }));
-
       setDragStart({ x: e.clientX, y: e.clientY });
     }
   };
-
   const handleMouseUp = () => setIsDragging(false);
   const handleMouseLeave = () => setIsDragging(false);
 
   // Highlight related nodes and edges on selection
   const getRelatedNodes = (nodeId: string): string[] => {
     const related: string[] = [nodeId];
-
     const node = graphData.nodes.find(n => n.id === nodeId);
-    if (node && node.parents) {
-      related.push(...node.parents);
-    }
-
+    if (node && node.parents) related.push(...node.parents);
     graphData.edges.forEach(edge => {
-      if (edge.from === nodeId) {
-        related.push(edge.to);
-      }
+      if (edge.from === nodeId) related.push(edge.to);
     });
-
     return related;
   };
-
   const isNodeHighlighted = (nodeId: string): boolean => {
     if (!selectedNode) return true;
     return getRelatedNodes(selectedNode).includes(nodeId);
   };
-
   const isEdgeHighlighted = (edge: Edge): boolean => {
     if (!selectedNode) return true;
     const relatedNodes = getRelatedNodes(selectedNode);
@@ -324,13 +265,11 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
           </button>
         </div>
       </div>
-
       <div className="text-xs text-gray-500 mb-4">
         {selectedNode
           ? `Selected: ${graphData.nodes.find(n => n.id === selectedNode)?.label || selectedNode}`
           : 'Click nodes to highlight relationships'}
       </div>
-
       <div
         ref={containerRef}
         className="relative h-[500px] overflow-hidden bg-gradient-to-br from-gray-50 to-white rounded-lg border cursor-grab active:cursor-grabbing"
@@ -341,9 +280,9 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
       >
         <svg
           ref={svgRef}
-          width="1320"
-          height="400"
-          viewBox="0 0 1320 400"
+          width="100%"
+          height="100%"
+          viewBox="0 0 800 400"
           style={{
             transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
             transformOrigin: 'center center',
@@ -363,13 +302,11 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
             </marker>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
-
           {/* Draw edges */}
-          {graphData.edges.map((edge, index) => {
+          {graphData.edges.map((edge) => {
             const fromNode = graphData.nodes.find(n => n.id === edge.from);
             const toNode = graphData.nodes.find(n => n.id === edge.to);
             const isHighlighted = isEdgeHighlighted(edge);
-
             if (fromNode && toNode) {
               return (
                 <g key={`edge-${edge.from}-${edge.to}`} opacity={isHighlighted ? 1 : 0.3}>
@@ -385,14 +322,12 @@ const DirectedGraph: React.FC<DirectedGraphProps> = ({ title = "Driver Tree 2" }
             }
             return null;
           })}
-
           {/* Draw nodes */}
           {graphData.nodes.map(node => {
             const nodeWidth = 120;
             const nodeHeight = 70;
             const isHighlighted = isNodeHighlighted(node.id);
             const isSelected = selectedNode === node.id;
-
             return (
               <g
                 key={`node-${node.id}`}

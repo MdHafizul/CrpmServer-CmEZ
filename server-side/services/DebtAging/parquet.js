@@ -502,8 +502,8 @@ exports.processDebtBySmerSegmentAgedDebt = async (parquetFilename, filters = {})
   `;
 
   const result = await dbAll(query);
-  
-  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB','BLANKS'];
+
+  const SmerSegmentOrder = ['MASR', 'MICB', 'GNLA', 'HRES', 'MEDB', 'SMLB', 'EMRB', 'BLANKS'];
   return formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder, true, filters);
 };
 
@@ -767,7 +767,20 @@ exports.getDriverTreeSummary = async (parquetFilename) => {
   `;
   const adidRows = await dbAll(adidQuery);
 
-  return formatDriverTreeSummary({ root, statusClassRows, adidRows });
+  // MIT Amount and Num Of Acc
+  const mitQuery = `
+    SELECT
+      SUM(CAST("MIT Amt" AS DOUBLE)) AS mitAmount,
+      COUNT(DISTINCT CASE WHEN CAST("MIT Amt" AS DOUBLE) <> 0 THEN "Contract Acc" ELSE NULL END) AS mitNumOfAcc
+    FROM read_parquet('${normalizedPath}')
+  `;
+  const [mitRow] = await dbAll(mitQuery);
+
+  return {
+    ...formatDriverTreeSummary({ root, statusClassRows, adidRows }),
+    mitAmount: Number(mitRow.mitAmount) || 0,
+    mitNumOfAcc: Number(mitRow.mitNumOfAcc) || 0
+  };
 };
 
 // Directed Graph summary API

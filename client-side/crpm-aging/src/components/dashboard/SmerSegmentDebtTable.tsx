@@ -17,6 +17,18 @@ interface SmerSegmentDebtTableProps {
 
 const FILENAME = '1750132052464-aging besar.parquet';
 
+// New SMER segment order
+const SMER_SEGMENT_ORDER = [
+  'MASR',
+  'MICB',
+  'GNLA',
+  'HRES',
+  'MEDB',
+  'SMLB',
+  'EMRB',
+  'BLANKS'
+];
+
 const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) => {
   const [data, setData] = useState<SmerSegmentDebtData[]>([]);
   const [stationTotals, setStationTotals] = useState<any[]>([]);
@@ -80,17 +92,23 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
     filters.smerSegments
   ]);
 
-  // Optionally filter by segment if needed
+  // Optionally filter by segment if needed, and sort by new SMER segment order
   const filteredData = useMemo(() => {
     if (!data?.length) return [];
     let filtered = [...data];
-    if (filters.segments && filters.segments.length > 0) {
-      filtered = filtered.filter(item => filters.segments!.includes(item.segment || ''));
+    if (filters.smerSegments && filters.smerSegments.length > 0) {
+      filtered = filtered.filter(item => filters.smerSegments!.includes(item.segment || ''));
     } else if (filters.segment && filters.segment !== 'all') {
       filtered = filtered.filter(item => item.segment === filters.segment);
     }
+    // Sort by new SMER segment order
+    filtered.sort((a, b) => {
+      const idxA = SMER_SEGMENT_ORDER.indexOf(a.segment);
+      const idxB = SMER_SEGMENT_ORDER.indexOf(b.segment);
+      return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+    });
     return filtered;
-  }, [data, filters.segment, filters.segments]);
+  }, [data, filters.segment, filters.smerSegments]);
 
   // Map stationTotals to table rows
   const stationTotalRows = useMemo(() => {

@@ -55,11 +55,22 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
   // Add state for API data
   const [driverTreeApiData, setDriverTreeApiData] = useState<DriverTreeApiResponse['data'] | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  // Add MIT state
+  const [mitInfo, setMitInfo] = useState<{ mitAmount: number; mitNumOfAcc: number }>({ mitAmount: 0, mitNumOfAcc: 0 });
 
   useEffect(() => {
     setLoading(true);
     getDriverTreeSummary(FILENAME)
-      .then(res => setDriverTreeApiData(res.data))
+      .then(res => {
+        setDriverTreeApiData(res.data);
+        // If MIT info is present, set it
+        if (res.data && typeof res.data.mitAmount === 'number' && typeof res.data.mitNumOfAcc === 'number') {
+          setMitInfo({
+            mitAmount: res.data.mitAmount,
+            mitNumOfAcc: res.data.mitNumOfAcc
+          });
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -268,7 +279,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
         {isRoot && node.subtitle && (
           <text
             x={x}
-            y={y - (nodeHeight/3) + 20}
+            y={y - (nodeHeight/3.5) + 20}
             textAnchor="middle"
             fill={isSelected ? 'white' : '#6b7280'}
             fontSize={12}
@@ -296,7 +307,8 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
         {(level < 4 && node.numOfAcc !== undefined) || (level === 4 && node.numOfAcc !== undefined) ? (
           <text
             x={x}
-            y={level === 4 ? y + 18 : y + (level === 3 ? 12 : 15)}
+            // Move closer to the title for ADID (level 4) nodes
+            y={level === 4 ? y + 12 : y + (level === 3 ? 12 : 15)}
             textAnchor="middle"
             fill={isSelected ? 'white' : '#6b7280'}
             fontSize={level === 0 ? 10 : level === 1 ? 9 : level === 2 ? 8 : 10}
@@ -324,7 +336,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
         {level === 4 && (
           <text
             x={x}
-            y={y + 6}
+            y={y + 1} // Move value closer to the title for ADID nodes
             textAnchor="middle"
             fill={isSelected ? 'white' : '#374151'}
             fontSize={10}
@@ -546,10 +558,11 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
                     const govColor = getNodeColor(govBranch, 2);
                     return (
                       <g key={govBranch.name}>
+                        {/* Connect from Government/Non-Government to Active/Inactive */}
                         <HorizontalDriverTreeConnection
-                          x1={650}
+                          x1={statusX + 100} // right edge of Active/Inactive node
                           y1={statusY}
-                          x2={750}
+                          x2={govX - 90} // left edge of Government/Non-Government node
                           y2={govY}
                           color={govColor}
                           isSelected={selectedDriverNode === govBranch.name}
@@ -567,10 +580,11 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
                           const accColor = getNodeColor(accClass, 3);
                           return (
                             <g key={accClass.name}>
+                              {/* Connection from level 2 (govBranch) to level 3 (accClass) */}
                               <HorizontalDriverTreeConnection
-                                x1={950}
+                                x1={govX + 100}
                                 y1={govY}
-                                x2={1150}
+                                x2={accX - 80}
                                 y2={accY}
                                 color={accColor}
                                 isSelected={selectedDriverNode === accClass.name}
@@ -646,13 +660,13 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
             <div className="flex justify-between items-center gap-4">
               <span className="text-sm text-gray-600 font-medium">CA:</span>
               <span className="text-sm font-bold text-gray-800">
-                {driverTreeStructure.root.numOfAcc?.toLocaleString() ?? '0'} accounts
+                {mitInfo.mitNumOfAcc?.toLocaleString() ?? '0'} accounts
               </span>
             </div>
             <div className="flex justify-between items-center gap-4">
               <span className="text-sm text-gray-600 font-medium">RM:</span>
               <span className="text-sm font-bold text-indigo-700">
-                {formatCurrency(mitAmount, 0, 0)}
+                {formatCurrency(mitInfo.mitAmount, 0, 0)}
               </span>
             </div>
           </div>

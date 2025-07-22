@@ -466,47 +466,72 @@ function formatSMERSegmentSummary(result, getBusinessAreaName, SmerSegmentOrder,
         segments: {}
       };
     }
-    grouped[businessArea].segments[row["SMER Segment"]] = {
-      segment: String(row["SMER Segment"]),
+    // Map null/empty/undefined to 'BLANKS'
+    let segmentKey = row["SMER Segment"];
+    if (segmentKey === null || segmentKey === undefined || segmentKey === '' || segmentKey === 'null') {
+      segmentKey = 'BLANKS';
+    }
+    grouped[businessArea].segments[segmentKey] = {
+      segment: segmentKey,
       numberOfAccounts: Number(row["Number of Accounts"]) || 0,
       ttlOSAmt: Number(row["TTL O/S Amt"]) || 0,
       percentOfTotal: formatPercent(Number(row["Number of Accounts"]), totalAccounts)
     };
     if (!isAgedDebtView) {
-      grouped[businessArea].segments[row["SMER Segment"]].totalUndue = Number(row["Total Undue"]) || 0;
-      grouped[businessArea].segments[row["SMER Segment"]].curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
-      grouped[businessArea].segments[row["SMER Segment"]].totalUnpaid = Number(row["Total Unpaid"]) || 0;
+      grouped[businessArea].segments[segmentKey].totalUndue = Number(row["Total Undue"]) || 0;
+      grouped[businessArea].segments[segmentKey].curMthUnpaid = Number(row["Cur.Mth Unpaid"]) || 0;
+      grouped[businessArea].segments[segmentKey].totalUnpaid = Number(row["Total Unpaid"]) || 0;
       if (filters && filters.mitType === "MIT") {
-        grouped[businessArea].segments[row["SMER Segment"]].mitAmt = Number(row["MIT Amt"]) || 0;
+        grouped[businessArea].segments[segmentKey].mitAmt = Number(row["MIT Amt"]) || 0;
       }
     }
   });
 
-  // Flatten to array, always in order for each station
+  // Flatten to array, always in order for each station, fill missing segments with zeros
   const data = [];
   Object.values(grouped).forEach(station => {
-    Object.values(station.segments).forEach(segment => {
-      const base = {
-        businessArea: station.businessArea,
-        station: station.station,
-        segment: segment.segment,
-        numberOfAccounts: segment.numberOfAccounts,
-        ttlOSAmt: segment.ttlOSAmt,
-        percentOfTotal: segment.percentOfTotal
-      };
-      if (!isAgedDebtView) {
-        base.totalUndue = segment.totalUndue;
-        base.curMthUnpaid = segment.curMthUnpaid;
-        base.totalUnpaid = segment.totalUnpaid;
-        if (filters && filters.mitType === "MIT") {
-          base.mitAmt = segment.mitAmt || 0;
+    SmerSegmentOrder.forEach(segmentKey => {
+      const segment = station.segments[segmentKey];
+      if (segment) {
+        const base = {
+          businessArea: station.businessArea,
+          station: station.station,
+          segment: segmentKey,
+          numberOfAccounts: segment.numberOfAccounts,
+          ttlOSAmt: segment.ttlOSAmt,
+          percentOfTotal: segment.percentOfTotal
+        };
+        if (!isAgedDebtView) {
+          base.totalUndue = segment.totalUndue;
+          base.curMthUnpaid = segment.curMthUnpaid;
+          base.totalUnpaid = segment.totalUnpaid;
+          if (filters && filters.mitType === "MIT") {
+            base.mitAmt = segment.mitAmt || 0;
+          }
         }
+        data.push(base);
+      } else {
+        // Fill missing segment with zeros
+        const base = {
+          businessArea: station.businessArea,
+          station: station.station,
+          segment: segmentKey,
+          numberOfAccounts: 0,
+          ttlOSAmt: 0,
+          percentOfTotal: "0.00"
+        };
+        if (!isAgedDebtView) {
+          base.totalUndue = 0;
+          base.curMthUnpaid = 0;
+          base.totalUnpaid = 0;
+          if (filters && filters.mitType === "MIT") {
+            base.mitAmt = 0;
+          }
+        }
+        data.push(base);
       }
-      data.push(base);
     });
   });
-
-  // Station totals (optional, not usually needed for SMER, but can be added like others)
 
   // Station totals
   const stationTotals = Object.values(grouped).map(station => {

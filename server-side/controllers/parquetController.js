@@ -70,15 +70,15 @@ exports.getSummaryCardData = async (req, res, next) => {
       data: convertedData
     });
   } catch (err) {
-    next(err); 
+    next(err);
   }
 };
 
 // @DESC : Get aged debt by station data
 // @route GET /api/v2/parquet/debt-by-station
 // @access Public
-exports.getAgedDebtByStationData = async (req, res, next) =>{
-  try{
+exports.getAgedDebtByStationData = async (req, res, next) => {
+  try {
     const { filename } = req.params;
     const { viewType = 'agedDebt', ...filters } = req.body;
 
@@ -89,7 +89,7 @@ exports.getAgedDebtByStationData = async (req, res, next) =>{
       data = await parquetServices.processDebtByStationAgedDebt(filename, filters);
     }
     res.json({ success: true, filename, data });
-  }catch (err) {
+  } catch (err) {
     next(err);
   }
 };
@@ -99,8 +99,8 @@ exports.getAgedDebtByStationData = async (req, res, next) =>{
 // @DESC : Get aged debt by account class data
 // @route GET /api/v2/parquet/debt-by-account-class
 // @access Public
-exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
-  try{
+exports.getAgedDebtByAccountClassData = async (req, res, next) => {
+  try {
     const { filename } = req.params;
     const { viewType = 'agedDebt', ...filters } = req.body;
 
@@ -111,7 +111,7 @@ exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
       data = await parquetServices.processDebtByAccountClassAgedDebt(filename, filters);
     }
     res.json({ success: true, filename, data });
-  }catch (err) {
+  } catch (err) {
     next(err);
   }
 };
@@ -120,17 +120,17 @@ exports.getAgedDebtByAccountClassData = async (req, res, next) =>{
 // @route GET /api/v2/parquet/debt-by-adid/:filename
 // @access Public
 exports.getAgedDebtSummaryByADID = async (req, res, next) => {
-  try{
-    const {filename} = req.params;const { viewType = 'agedDebt', ...filters } = req.body;
+  try {
+    const { filename } = req.params; const { viewType = 'agedDebt', ...filters } = req.body;
 
     let data;
     if (viewType === 'TR') {
-     data = await parquetServices.processDebtByADIDTR(filename, filters);
-    }else {
+      data = await parquetServices.processDebtByADIDTR(filename, filters);
+    } else {
       data = await parquetServices.processDebtByADIDAgedDebt(filename, filters);
     }
     res.json({ success: true, filename, data });
-  }catch (err) {
+  } catch (err) {
     next(err);
   }
 };
@@ -139,18 +139,18 @@ exports.getAgedDebtSummaryByADID = async (req, res, next) => {
 // @route GET /api/v2/parquet/debt-by-smer-segment/:filename
 exports.getAgedDebtSummaryBySmerSegment = async (req, res, next) => {
   try {
-    const {filename} = req.params;
+    const { filename } = req.params;
     const { viewType = 'agedDebt', ...filters } = req.body;
 
-    let data ;
-    if(viewType === 'TR') {
+    let data;
+    if (viewType === 'TR') {
       data = await parquetServices.processDebtBySmerSegmentTR(filename, filters);
     }
     else {
       data = await parquetServices.processDebtBySmerSegmentAgedDebt(filename, filters);
-    } 
+    }
     res.json({ success: true, filename, data });
-  }catch (err) {
+  } catch (err) {
     next(err);
   }
 }
@@ -182,7 +182,7 @@ exports.getAgedDebtSummaryByStaffID = async (req, res, next) => {
 exports.getDetailedDebtTableData = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    const { cursor, limit, sortField, sortDirection} = req.query;
+    const { cursor, limit, sortField, sortDirection } = req.query;
     const { viewType = "AgedDebt", ...filters } = req.body || {};
 
     let data;
@@ -243,8 +243,9 @@ exports.getAllDataFromParquet = async (req, res) => {
 exports.getDriverTreeSummary = async (req, res, next) => {
   try {
     const { filename } = req.params;
-    const data = await parquetServices.getDriverTreeSummary(filename);
-    res.json({ success: true, filename, data });
+    const result = await parquetServices.getDriverTreeSummary(filename);
+    // result contains: { root, branches, mitAmount, mitNumOfAcc }
+    res.json({ success: true, filename, data: result });
   } catch (err) {
     next(err);
   }

@@ -255,6 +255,8 @@ export interface DriverTreeApiResponse {
   data: {
     root: DriverTreeNode;
     branches: DriverTreeNode[];
+    mitAmount?: number;
+    mitNumOfAcc?: number;
   };
 }
 
