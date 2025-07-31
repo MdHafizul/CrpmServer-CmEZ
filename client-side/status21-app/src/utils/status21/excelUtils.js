@@ -242,7 +242,7 @@ export async function generateStatus21Report(filter, setFilter, selectedDate) {
             const subtitleCell = worksheet.getCell('A2'); 
             const reportDate = selectedDate ? new Date(selectedDate) : new Date();
             const formattedDate = `${reportDate.getDate().toString().padStart(2, '0')}/${(reportDate.getMonth() + 1).toString().padStart(2, '0')}/${reportDate.getFullYear()}`;
-            subtitleCell.value = `Reports Of ${formattedDate} `;
+            subtitleCell.value = `Report As Of ${formattedDate} `;
             subtitleCell.font = {
                 name: 'Calibri',
                 size: 10,

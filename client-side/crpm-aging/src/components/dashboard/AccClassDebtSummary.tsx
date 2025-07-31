@@ -22,6 +22,16 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
 
   useEffect(() => {
     setLoading(true);
+    const getDebtRangeObj = (range: string) => {
+      if (!range || range === 'all') return null;
+      if (range.endsWith('+')) {
+        const min = parseFloat(range.replace('+', ''));
+        return { min, max: null };
+      }
+      const [min, max] = range.split('-').map(Number);
+      return { min, max };
+    };
+
     const apiParams = {
       viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
       accClassType:
@@ -42,7 +52,7 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
       balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
       agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
-      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
     getDebtByAccountClassData(FILENAME, apiParams)
@@ -135,10 +145,12 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
       groups[key].push(row);
     });
 
-    // Find total rows (isTotal === true) and move them to the end of each group
+    // Find all station total rows from the original data
+    const stationTotals = data.filter(r => r.isTotal);
+
     const result: AccClassDebtSummaryData[] = [];
-    Object.entries(groups).forEach(([, rows]) => {
-      // Account class rows (not total)
+    Object.entries(groups).forEach(([key, rows]) => {
+      // Account class rows (not total/grand total)
       rows
         .filter(r => !r.isTotal && !r.isGrandTotal)
         .forEach((row, idx) => {
@@ -149,20 +161,33 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
             station: idx === 0 ? row.station : '',
           });
         });
-      // Total row for the group
-      rows.filter(r => r.isTotal).forEach(totalRow => {
-        result.push({
-          ...totalRow,
-          businessArea: totalRow.businessArea,
-          station: totalRow.station,
+      // If governmentType is government or non-government, add station total row for this group if present
+      if (filters.governmentType === 'government' || filters.governmentType === 'non-government') {
+        const [area, station] = key.split('|');
+        const totalRow = stationTotals.find(st => st.businessArea === area && st.station === station);
+        if (totalRow) {
+          result.push({
+            ...totalRow,
+            businessArea: totalRow.businessArea,
+            station: totalRow.station,
+          });
+        }
+      } else {
+        // For other types, keep previous logic (add total row if present in filteredData)
+        rows.filter(r => r.isTotal).forEach(totalRow => {
+          result.push({
+            ...totalRow,
+            businessArea: totalRow.businessArea,
+            station: totalRow.station,
+          });
         });
-      });
+      }
     });
-    // Add grand total row at the end if present
-    const grandTotalRow = filteredData.find(r => r.isGrandTotal);
+    // Add grand total row at the end if present in the original data (not just filteredData)
+    const grandTotalRow = data.find(r => r.isGrandTotal);
     if (grandTotalRow) result.push(grandTotalRow);
     return result;
-  }, [filteredData]);
+  }, [filteredData, data, filters.governmentType]);
 
   const baseColumns = [
     {
@@ -222,7 +247,7 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
     },
   ];
 
-  const agedDebtColumns = [
+  const trColumns = [
     {
       header: 'Total Undue',
       accessor: 'totalUndue',
@@ -260,13 +285,13 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
       ),
     },
     {
-      header: 'TTL O/S Amt',
-      accessor: 'ttlOSAmt',
+      header: 'Total Unpaid',
+      accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
         <span
           className={`${
-            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'
+            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'
           } ${row.isGrandTotal ? 'text-lg' : ''}`}
         >
           RM{' '}
@@ -277,14 +302,17 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
         </span>
       ),
     },
+  ];
+
+  const commonColumns = [
     {
-      header: 'Total Unpaid',
-      accessor: 'totalUnpaid',
+      header: 'TTL O/S Amt',
+      accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number, row: AccClassDebtSummaryData) => (
         <span
           className={`${
-            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'
+            row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'
           } ${row.isGrandTotal ? 'text-lg' : ''}`}
         >
           RM{' '}
@@ -311,7 +339,11 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
     },
   ];
 
-  const columns = [...baseColumns, ...agedDebtColumns];
+  // Compose columns based on governmentType
+  const columns =
+    (filters.governmentType === 'government' || filters.governmentType === 'non-government')
+      ? [...baseColumns, ...commonColumns]
+      : [...baseColumns, ...trColumns, ...commonColumns];
 
   const headerRight = (
     <div className="text-sm text-gray-600">

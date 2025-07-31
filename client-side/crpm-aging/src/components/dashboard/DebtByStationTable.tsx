@@ -19,6 +19,16 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
 
   useEffect(() => {
     setLoading(true);
+    const getDebtRangeObj = (range: string) => {
+      if (!range || range === 'all') return null;
+      if (range.endsWith('+')) {
+        const min = parseFloat(range.replace('+', ''));
+        return { min, max: null };
+      }
+      const [min, max] = range.split('-').map(Number);
+      return { min, max };
+    };
+
     const apiParams = {
       viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
       accClassType: filters.governmentType === 'government'
@@ -37,7 +47,7 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
       balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
       agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
-      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
     getDebtByStationData(FILENAME, apiParams)
@@ -60,7 +70,8 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
     filters.smerSegments
   ]);
 
-  const columns = [
+  // Define columns for both views
+  const baseColumns = [
     { 
       header: 'Business Area', 
       accessor: 'businessArea',
@@ -91,6 +102,9 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
         </span>
       )
     },
+  ];
+
+  const trColumns = [
     { 
       header: 'Total Undue', 
       accessor: 'totalUndue',
@@ -112,21 +126,24 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
       )
     },
     { 
-      header: 'TTL O/S Amt', 
-      accessor: 'ttlOSAmt',
-      align: 'right' as const,
-      cell: (value: number, row: any) => (
-        <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-bold text-red-600'}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-        </span>
-      )
-    },
-    { 
       header: 'Total Unpaid', 
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: any) => (
         <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-bold text-gray-900'}`}>
+          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        </span>
+      )
+    },
+  ];
+
+  const commonColumns = [
+    { 
+      header: 'TTL O/S Amt', 
+      accessor: 'ttlOSAmt',
+      align: 'right' as const,
+      cell: (value: number, row: any) => (
+        <span className={`${row.isGrandTotal ? 'font-bold text-blue-600 text-lg' : 'font-bold text-red-600'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )
@@ -142,6 +159,11 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
       )
     }
   ];
+
+  // Compose columns based on viewType
+  const columns = filters.viewType === 'agedDebt'
+    ? [...baseColumns, ...commonColumns]
+    : [...baseColumns, ...trColumns, ...commonColumns];
 
   // Append grand total row if present
   const tableData = grandTotal
@@ -161,22 +183,8 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
       ]
     : data;
 
-  const headerRight = (
-    <div className="flex items-center gap-4">
-      {filters && (
-        <Dropdown
-          options={filters.businessAreaOptions}
-          value={filters.businessArea}
-          onChange={filters.onBusinessAreaChange}
-          placeholder="All Business Areas"
-          className="w-64"
-        />
-      )}
-    </div>
-  );
-
   return (
-    <Card title={title} headerRight={headerRight}>
+    <Card title={title} >
       <Table 
         columns={columns} 
         data={tableData} 

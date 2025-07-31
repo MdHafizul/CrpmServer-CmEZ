@@ -361,14 +361,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const accStatusOptions: FilterOptions[] = [
     { value: 'all', label: 'All Statuses' },
-    { value: 'active', label: 'Active' },
-    { value: 'inactive', label: 'Inactive' },
+    { value: 'Active', label: 'Active' },
+    { value: 'Inactive', label: 'Inactive' },
   ];
 
   const netPositiveBalanceOptions: FilterOptions[] = [
     { value: 'all', label: 'All Balances' },
-    { value: 'positive', label: 'Positive Balance' },
-    { value: 'negative', label: 'Negative Balance' },
+    { value: 'Positive', label: 'Positive Balance' },
+    { value: 'Negative', label: 'Negative Balance' },
   ];
 
   const accClassOptions: FilterOptions[] = [

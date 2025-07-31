@@ -137,7 +137,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
     },
   ];
 
-  const tradeReceivableColumns = [
+  const trColumns = [
     { 
       header: 'Total Undue', 
       accessor: 'totalUndue',
@@ -159,16 +159,6 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
       )
     },
     { 
-      header: 'TTL O/S Amt', 
-      accessor: 'ttlOSAmt',
-      align: 'right' as const,
-      cell: (value: number, row: StaffDebtData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-        </span>
-      )
-    },
-    { 
       header: 'Total Unpaid', 
       accessor: 'totalUnpaid',
       align: 'right' as const,
@@ -178,19 +168,9 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
         </span>
       )
     },
-    { 
-      header: '% of Total', 
-      accessor: 'percentage',
-      align: 'right' as const,
-      cell: (value: number, row: StaffDebtData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-medium text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          {value?.toFixed(2)}%
-        </span>
-      )
-    }
   ];
 
-  const agedDebtColumns = [
+  const commonColumns = [
     { 
       header: 'TTL O/S Amt', 
       accessor: 'ttlOSAmt',
@@ -213,9 +193,10 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
     }
   ];
 
-  const columns = filters.viewType === 'tradeReceivable'
-    ? [...baseColumns, ...tradeReceivableColumns]
-    : [...baseColumns, ...agedDebtColumns];
+  const columns =
+    filters.viewType === 'agedDebt'
+      ? [...baseColumns, ...commonColumns]
+      : [...baseColumns, ...trColumns, ...commonColumns];
 
   return (
     <Card title="By Staff Debt">

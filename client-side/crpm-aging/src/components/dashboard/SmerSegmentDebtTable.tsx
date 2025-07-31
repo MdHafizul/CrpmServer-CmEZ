@@ -37,6 +37,16 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
 
   useEffect(() => {
     setLoading(true);
+    const getDebtRangeObj = (range: string) => {
+      if (!range || range === 'all') return null;
+      if (range.endsWith('+')) {
+        const min = parseFloat(range.replace('+', ''));
+        return { min, max: null };
+      }
+      const [min, max] = range.split('-').map(Number);
+      return { min, max };
+    };
+
     const apiParams = {
       viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
       accClassType: filters.governmentType === 'government'
@@ -55,7 +65,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
       balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
       agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
-      totalOutstandingRange: filters.debtRange !== 'all' ? filters.debtRange : null,
+      totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
     getDebtBySmerSegmentData(FILENAME, apiParams)
@@ -223,7 +233,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
     },
   ];
 
-  const agedDebtColumns = [
+  const trColumns = [
     {
       header: 'Total Undue',
       accessor: 'totalUndue',
@@ -245,21 +255,24 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
       )
     },
     {
-      header: 'TTL O/S Amt',
-      accessor: 'ttlOSAmt',
-      align: 'right' as const,
-      cell: (value: number, row: SmerSegmentDebtData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-        </span>
-      )
-    },
-    {
       header: 'Total Unpaid',
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: SmerSegmentDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
+          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        </span>
+      )
+    },
+  ];
+
+  const commonColumns = [
+    {
+      header: 'TTL O/S Amt',
+      accessor: 'ttlOSAmt',
+      align: 'right' as const,
+      cell: (value: number, row: SmerSegmentDebtData) => (
+        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )
@@ -276,7 +289,10 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
     },
   ];
 
-  const columns = [...baseColumns, ...agedDebtColumns];
+  const columns =
+    filters.viewType === 'agedDebt'
+      ? [...baseColumns, ...commonColumns]
+      : [...baseColumns, ...trColumns, ...commonColumns];
 
   const headerRight = (
     <div className="text-sm text-gray-600">

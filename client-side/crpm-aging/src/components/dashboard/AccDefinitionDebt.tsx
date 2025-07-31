@@ -23,6 +23,16 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
 
   useEffect(() => {
     setLoading(true);
+    const getDebtRangeObj = (range: string) => {
+      if (!range || range === 'all') return null;
+      if (range.endsWith('+')) {
+        const min = parseFloat(range.replace('+', ''));
+        return { min, max: null };
+      }
+      const [min, max] = range.split('-').map(Number);
+      return { min, max };
+    };
+
     const apiParams = {
       viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
       accClassType: filters.governmentType === 'government'
@@ -40,6 +50,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
       balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      totalOutstandingRange: getDebtRangeObj(filters.debtRange),
     };
     getDebtByAdidData(FILENAME, apiParams)
       .then(res => {
@@ -121,6 +132,8 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
 
   // Group rows by businessArea+station, show only first row's businessArea/station, then total, then grand total
   const groupedRows = useMemo(() => {
+    if (!filteredData.length) return [];
+    // Find all unique businessArea+station in filteredData
     const groups: Record<string, AccDefinitionDebtData[]> = {};
     filteredData.forEach(row => {
       const key = `${row.businessArea}|${row.station}`;
@@ -128,8 +141,11 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       groups[key].push(row);
     });
 
+    // Find all station total rows from the original data
+    const stationTotals = data.filter(r => r.isTotal);
+
     const result: AccDefinitionDebtData[] = [];
-    Object.entries(groups).forEach(([, rows]) => {
+    Object.entries(groups).forEach(([key, rows]) => {
       // ADID rows (not total/grand total)
       rows.filter(r => !r.isTotal && !r.isGrandTotal).forEach((row, idx) => {
         result.push({
@@ -138,20 +154,22 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
           station: idx === 0 ? row.station : '',
         });
       });
-      // Station total row
-      rows.filter(r => r.isTotal).forEach(totalRow => {
+      // Add station total row for this group if present
+      const [area, station] = key.split('|');
+      const totalRow = stationTotals.find(st => st.businessArea === area && st.station === station);
+      if (totalRow) {
         result.push({
           ...totalRow,
           businessArea: totalRow.businessArea,
           station: totalRow.station,
         });
-      });
+      }
     });
     // Grand total row at the end
-    const grandTotalRow = filteredData.find(r => r.isGrandTotal);
+    const grandTotalRow = data.find(r => r.isGrandTotal);
     if (grandTotalRow) result.push(grandTotalRow);
     return result;
-  }, [filteredData]);
+  }, [filteredData, data]);
 
   const baseColumns = [
     {
@@ -211,7 +229,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
     },
   ];
 
-  const agedDebtColumns = [
+  const trColumns = [
     {
       header: 'Total Undue',
       accessor: 'totalUndue',
@@ -233,21 +251,24 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       )
     },
     {
-      header: 'TTL O/S Amt',
-      accessor: 'ttlOSAmt',
-      align: 'right' as const,
-      cell: (value: number, row: AccDefinitionDebtData) => (
-        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
-          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-        </span>
-      )
-    },
-    {
       header: 'Total Unpaid',
       accessor: 'totalUnpaid',
       align: 'right' as const,
       cell: (value: number, row: AccDefinitionDebtData) => (
         <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-gray-900'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
+          RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+        </span>
+      )
+    },
+  ];
+
+  const commonColumns = [
+    {
+      header: 'TTL O/S Amt',
+      accessor: 'ttlOSAmt',
+      align: 'right' as const,
+      cell: (value: number, row: AccDefinitionDebtData) => (
+        <span className={`${row.isGrandTotal || row.isTotal ? 'font-bold text-blue-600' : 'font-bold text-red-600'} ${row.isGrandTotal ? 'text-lg' : ''}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )
@@ -264,7 +285,10 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
     },
   ];
 
-  const columns = [...baseColumns, ...agedDebtColumns];
+  const columns =
+    filters.viewType === 'agedDebt'
+      ? [...baseColumns, ...commonColumns]
+      : [...baseColumns, ...trColumns, ...commonColumns];
 
   const headerRight = (
     <div className="text-sm text-gray-600">
