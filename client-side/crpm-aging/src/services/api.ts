@@ -7,16 +7,43 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000
 
 
 // Function to upload debt file
-export const uploadDebtFile = async (file: File): Promise<UploadResponse> => {
-  const url = `${API_BASE_URL}/api/v2/crpm/process`;
+export async function uploadDebtFile(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await axios.post<UploadResponse>(url, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
-  return response.data;
-};
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/v2/crpm/process`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorMsg = 'Upload failed';
+      try {
+        const errData = await response.json();
+        errorMsg = errData?.message || errorMsg;
+      } catch {}
+      return {
+        success: false,
+        message: errorMsg,
+        parquetFilename: '', // <-- always include this key
+      };
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success,
+      message: data.message,
+      parquetFilename: data.parquetFilename, // <-- always include this key
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'Network error during upload',
+      parquetFilename: '', // <-- always include this key
+    };
+  }
+}
 
 //Function to fetch summary card data
 export const getSummaryCardData = async (filename: string): Promise<SummaryCardApiResponse> => {

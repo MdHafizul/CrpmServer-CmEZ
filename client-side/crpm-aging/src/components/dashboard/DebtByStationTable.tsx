@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
-import Dropdown from '../ui/Dropdown';
 import { getDebtByStationData } from '../../services/api';
 import type { DebtByStationRow } from '../../types/dashboard.type';
+import { useAppContext } from '../../context/AppContext'; // <-- Add this import
+
 
 interface DebtByStationTableProps {
   filters: any;
   title?: string;
 }
 
-const FILENAME = '1750132052464-aging besar.parquet';
-
 const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title = 'Summary Aged Debt by Station' }) => {
   const [data, setData] = useState<DebtByStationRow[]>([]);
   const [grandTotal, setGrandTotal] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const { parquetFileName } = useAppContext(); 
 
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
     const getDebtRangeObj = (range: string) => {
       if (!range || range === 'all') return null;
@@ -50,13 +51,14 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
       totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
-    getDebtByStationData(FILENAME, apiParams)
+    getDebtByStationData(parquetFileName, apiParams) 
       .then(res => {
         setData(res.data?.data || []);
         setGrandTotal(res.data?.grandTotal || null);
       })
       .finally(() => setLoading(false));
   }, [
+    parquetFileName,
     filters.viewType,
     filters.governmentType,
     filters.mitFilter,

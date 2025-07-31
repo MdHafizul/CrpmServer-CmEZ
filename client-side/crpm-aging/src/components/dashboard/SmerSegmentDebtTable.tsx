@@ -3,6 +3,7 @@ import Card from '../ui/Card';
 import Table from '../ui/Table';
 import { getDebtBySmerSegmentData } from '../../services/api';
 import type { DebtBySmerSegmentRow } from '../../types/dashboard.type';
+import { useAppContext } from '../../context/AppContext'; 
 
 // Type for each row
 interface SmerSegmentDebtData extends DebtBySmerSegmentRow {
@@ -15,9 +16,6 @@ interface SmerSegmentDebtTableProps {
   filters: any;
 }
 
-const FILENAME = '1750132052464-aging besar.parquet';
-
-// New SMER segment order
 const SMER_SEGMENT_ORDER = [
   'MASR',
   'MICB',
@@ -34,8 +32,10 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
   const [stationTotals, setStationTotals] = useState<any[]>([]);
   const [grandTotal, setGrandTotal] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const { parquetFileName } = useAppContext();
 
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
     const getDebtRangeObj = (range: string) => {
       if (!range || range === 'all') return null;
@@ -68,7 +68,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
       totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
-    getDebtBySmerSegmentData(FILENAME, apiParams)
+    getDebtBySmerSegmentData(parquetFileName, apiParams)  
       .then(res => {
         const d = res.data?.data || [];
         setData(d.map((row: any) => ({
@@ -89,6 +89,7 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
       })
       .finally(() => setLoading(false));
   }, [
+    parquetFileName,
     filters.viewType,
     filters.governmentType,
     filters.mitFilter,

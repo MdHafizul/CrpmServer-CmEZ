@@ -88,6 +88,8 @@ interface AppContextType {
       smerSegments?: string[];
     }
   ) => Promise<void>;
+  parquetFileName: string | null;
+  setParquetFileName: (fileName: string | null) => void;
 }
 
 interface FiltersType {
@@ -153,6 +155,44 @@ interface FiltersType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+export function useAppContext() {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useAppContext must be used within AppProvider');
+  return ctx;
+}
+
+const PARQUET_FILENAME_CACHE_KEY = 'parquetFileNameCache';
+const PARQUET_FILENAME_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function setParquetFileNameCache(fileName: string | null) {
+  if (fileName) {
+    const cacheObj = {
+      value: fileName,
+      expires: Date.now() + PARQUET_FILENAME_TTL_MS
+    };
+    localStorage.setItem(PARQUET_FILENAME_CACHE_KEY, JSON.stringify(cacheObj));
+  } else {
+    localStorage.removeItem(PARQUET_FILENAME_CACHE_KEY);
+  }
+}
+
+function getParquetFileNameCache(): string | null {
+  const raw = localStorage.getItem(PARQUET_FILENAME_CACHE_KEY);
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj.expires && obj.expires > Date.now()) {
+      return obj.value;
+    } else {
+      localStorage.removeItem(PARQUET_FILENAME_CACHE_KEY);
+      return null;
+    }
+  } catch {
+    localStorage.removeItem(PARQUET_FILENAME_CACHE_KEY);
+    return null;
+  }
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Filters state and functions
   const [businessArea, setBusinessArea] = useState('');
@@ -173,6 +213,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [debtByADIDData, setDebtByADIDData] = useState<DebtByAccountByADIDApiResponse['data'] | null>(null);
   const [debtByStaffData, setDebtByStaffData] = useState<DebtByStaffApiResponse['data'] | null>(null);
   const [debtBySmerSegmentData, setDebtBySmerSegmentData] = useState<DebtBySmerSegmentApiResponse['data'] | null>(null);
+  const [parquetFileName, setParquetFileNameState] = useState<string | null>(() => getParquetFileNameCache());
+
+  // Debug: log parquetFileName whenever it changes
+  React.useEffect(() => {
+    console.log('[AppContext] parquetFileName:', parquetFileName);
+  }, [parquetFileName]);
+
+  // Debug: log when AppProvider renders
+  console.log('[AppContext] AppProvider render, parquetFileName:', parquetFileName);
 
 
   // State for summary card data and related properties
@@ -485,6 +534,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     onViewTypeChange: setViewType,
   };
 
+  const setParquetFileName = (fileName: string | null) => {
+    setParquetFileNameState(fileName);
+    setParquetFileNameCache(fileName);
+  };
+
   return (
     <AppContext.Provider value={{
       summaryCardData,
@@ -503,15 +557,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       debtByStaffData,
       fetchDebtByStaff,
       debtBySmerSegmentData,
-      fetchDebtBySmerSegment
+      fetchDebtBySmerSegment,
+      parquetFileName,
+      setParquetFileName
     }}>
       {children}
     </AppContext.Provider>
   );
-};
-
-export const useAppContext = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useAppContext must be used within AppProvider');
-  return ctx;
 };

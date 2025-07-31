@@ -5,12 +5,11 @@ import { formatCurrency } from '../../../utils/formatter';
 import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
 import { getDriverTreeSummary } from '../../../services/api';
 import type { DriverTreeApiResponse } from '../../../types/dashboard.type'; // Removed DriverTreeNode
+import { useAppContext } from '../../../context/AppContext'; // <-- Add
 
 interface DriverTreeProps {
   mitAmount?: number; 
 }
-
-const FILENAME = '1750132052464-aging besar.parquet'; // <-- hardcoded filename
 
 const GOVERNMENT_CLASSES = ['LPCG', 'OPCG'];
 const NON_GOVERNMENT_CLASSES = ['LPCN', 'OPCN'];
@@ -58,9 +57,12 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
   // Add MIT state
   const [mitInfo, setMitInfo] = useState<{ mitAmount: number; mitNumOfAcc: number }>({ mitAmount: 0, mitNumOfAcc: 0 });
 
+  const { parquetFileName } = useAppContext();
+
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
-    getDriverTreeSummary(FILENAME)
+    getDriverTreeSummary(parquetFileName) 
       .then(res => {
         setDriverTreeApiData(res.data);
         // If MIT info is present, set it
@@ -72,7 +74,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
         }
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [parquetFileName]); // <-- Add parquetFileName
 
   // Use API data directly for rendering
   const driverTreeStructure = useMemo(() => {

@@ -3,6 +3,7 @@ import Card from '../ui/Card';
 import Table from '../ui/Table';
 import { getDebtByAccountClassData } from '../../services/api';
 import type { DebtByAccountClassRow } from '../../types/dashboard.type';
+import { useAppContext } from '../../context/AppContext';
 
 interface AccClassDebtSummaryData extends DebtByAccountClassRow {
   isTotal?: boolean;
@@ -14,13 +15,13 @@ interface AccClassDebtSummaryProps {
   filters: any;
 }
 
-const FILENAME = '1750132052464-aging besar.parquet';
-
 const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) => {
   const [data, setData] = useState<AccClassDebtSummaryData[]>([]);
   const [loading, setLoading] = useState(false);
+  const { parquetFileName } = useAppContext();
 
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
     const getDebtRangeObj = (range: string) => {
       if (!range || range === 'all') return null;
@@ -55,7 +56,7 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
       totalOutstandingRange: getDebtRangeObj(filters.debtRange),
       smerSegments: filters.smerSegments,
     };
-    getDebtByAccountClassData(FILENAME, apiParams)
+    getDebtByAccountClassData(parquetFileName, apiParams)
       .then(res => {
         // Map API data to table data structure as before
         const d = res.data?.data || [];
@@ -108,6 +109,7 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
       })
       .finally(() => setLoading(false));
   }, [
+    parquetFileName,
     filters.viewType,
     filters.governmentType,
     filters.mitFilter,

@@ -18,18 +18,12 @@ exports.uploadAndProcess = async (req, res) => {
     console.log(`Processing uploaded file: ${req.file.originalname}`);
 
     // Process the Excel file: convert to parquet and count active rows
-    const result = await parquetServices.convertExcelToParquet(req.file.path);
-
-    // Convert any BigInt values to Numbers
-    const convertedResult = convertBigIntsInObject(result);
+    const parquetFilename = await parquetServices.convertExcelToParquet(req.file.path);
 
     res.json({
       success: true,
       message: 'File processed successfully',
-      originalFileName: req.file.originalname,
-      activeCount: convertedResult.activeCount,
-      parquetFilename: convertedResult.parquetFilename,
-      downloadUrl: `/api/v2/parquet/download/${convertedResult.parquetFilename}`
+      parquetFilename: path.basename(parquetFilename) 
     });
   } catch (error) {
     console.error('Processing error:', error);

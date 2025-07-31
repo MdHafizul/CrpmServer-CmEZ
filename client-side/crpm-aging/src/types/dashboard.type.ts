@@ -56,9 +56,9 @@ export interface FilterOptions {
 }
 
 export interface UploadResponse {
-  filename: string;
   success: boolean;
   message?: string;
+  parquetFilename: string;
 }
 
 export interface DebtByStationApiResponse {

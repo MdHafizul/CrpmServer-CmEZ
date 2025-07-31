@@ -3,6 +3,7 @@ import Card from '../ui/Card';
 import Table from '../ui/Table';
 import { getDebtByAdidData } from '../../services/api';
 import type { DebtByAccountByADIDRow } from '../../types/dashboard.type';
+import { useAppContext } from '../../context/AppContext';
 
 // Type for each row
 interface AccDefinitionDebtData extends DebtByAccountByADIDRow {
@@ -15,13 +16,13 @@ interface AccDefinitionDebtProps {
   filters: any;
 }
 
-const FILENAME = '1750132052464-aging besar.parquet';
-
 const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
   const [data, setData] = useState<AccDefinitionDebtData[]>([]);
   const [loading, setLoading] = useState(false);
+  const { parquetFileName } = useAppContext();
 
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
     const getDebtRangeObj = (range: string) => {
       if (!range || range === 'all') return null;
@@ -52,7 +53,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
       totalOutstandingRange: getDebtRangeObj(filters.debtRange),
     };
-    getDebtByAdidData(FILENAME, apiParams)
+    getDebtByAdidData(parquetFileName, apiParams)
       .then(res => {
         // Map API data for DebtByADID
         const d = res.data?.data || [];
@@ -105,6 +106,7 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       })
       .finally(() => setLoading(false));
   }, [
+    parquetFileName,
     filters.viewType,
     filters.governmentType,
     filters.mitFilter,

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
 import { getDirectedGraphSummary } from '../../../services/api';
+import { useAppContext } from '../../../context/AppContext'; // <-- add this
 // Fixed node positions for the vertical tree layout
 const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
   root: { x: 300, y: 50 },
@@ -73,9 +74,11 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { parquetFileName } = useAppContext(); // <-- use context
 
   useEffect(() => {
-    getDirectedGraphSummary(FILENAME).then(res => {
+    if (!parquetFileName) return; // only fetch if filename exists
+    getDirectedGraphSummary(parquetFileName).then(res => {
       const apiData = res.data;
       // Map API data to fixed node positions
       const nodes: Node[] = [];
@@ -138,7 +141,7 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
       });
       setGraphData({ nodes, edges });
     });
-  }, []);
+  }, [parquetFileName]); 
 
   // Helper function to format amounts
   const formatAmount = (amount: number | undefined): string => {

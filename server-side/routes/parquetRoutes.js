@@ -19,7 +19,7 @@ const upload = multer({
 
 const router = express.Router();
 
-// Process Excel → Parquet → Count
+// Process Excel → Parquet 
 router.post('/process', upload.single('file'), dataController.uploadAndProcess);
 // Return Summary Card Data
 router.get('/summary-card/:filename', dataController.getSummaryCardData);
@@ -43,9 +43,9 @@ router.post('/directed-graph-summary/:filename', dataController.getDirectedGraph
 
 
 
-// Get all data from Parquet file
-router.get('/all-data/:filename', dataController.getAllDataFromParquet);
-// Download converted Parquet
-router.get('/download/:filename', dataController.downloadParquet);
+// // Get all data from Parquet file
+// router.get('/all-data/:filename', dataController.getAllDataFromParquet);
+// // Download converted Parquet
+// router.get('/download/:filename', dataController.downloadParquet);
 
 module.exports = router;

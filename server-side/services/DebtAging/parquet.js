@@ -23,14 +23,15 @@ const connection = new duckdb.Connection(db);
 const dbRun = promisify(connection.run.bind(connection));
 const dbAll = promisify(connection.all.bind(connection));
 
-// Function to convert Excel file to PARQUET format
 exports.convertExcelToParquet = async (excelPath) => {
   await initializeDuckDB(dbRun);
   const parquetPath = excelPath.replace(/\.(xlsx|xlsm|xltx|xltm)$/i, '.parquet');
   const normalizedExcelPath = path.resolve(excelPath).replace(/\\/g, '/');
   const normalizedParquetPath = path.resolve(parquetPath).replace(/\\/g, '/');
   const query = `
-    COPY (SELECT * FROM read_excel('${normalizedExcelPath}')) TO '${normalizedParquetPath}' (FORMAT 'parquet');
+    COPY (
+      SELECT * FROM read_xlsx('${normalizedExcelPath}', ALL_VARCHAR=TRUE)
+    ) TO '${normalizedParquetPath}' (FORMAT 'parquet');
   `;
   await dbRun(query);
   return parquetPath;

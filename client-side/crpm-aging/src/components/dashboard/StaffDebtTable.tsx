@@ -3,6 +3,7 @@ import Card from '../ui/Card';
 import Table from '../ui/Table';
 import { getDebtByStaffData } from '../../services/api';
 import type { DebtByStaffRow } from '../../types/dashboard.type';
+import { useAppContext } from '../../context/AppContext';
 
 interface StaffDebtData extends DebtByStaffRow {
   isTotal?: boolean;
@@ -14,19 +15,19 @@ interface StaffDebtTableProps {
   filters: any;
 }
 
-const FILENAME = '1750132052464-aging besar.parquet';
-
 const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
   const [data, setData] = useState<StaffDebtData[]>([]);
   const [loading, setLoading] = useState(false);
+  const { parquetFileName } = useAppContext();
 
   useEffect(() => {
+    if (!parquetFileName) return;
     setLoading(true);
     const apiParams = {
       viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'agedDebt',
       businessAreas: filters.businessAreas,
     };
-    getDebtByStaffData(FILENAME, apiParams)
+    getDebtByStaffData(parquetFileName, apiParams)
       .then(res => {
         const d = res.data?.data || [];
         const grandTotal = res.data?.grandTotal;
@@ -63,6 +64,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
       })
       .finally(() => setLoading(false));
   }, [
+    parquetFileName,
     filters.businessAreas,
     filters.viewType,
   ]);

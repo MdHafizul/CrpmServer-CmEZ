@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import Card from '../ui/Card';
 import { formatCurrency } from '../../utils/formatter';
 import { getSummaryCardData } from '../../services/api';
+import { useAppContext } from '../../context/AppContext';
 
 interface PieChartData {
   name: string;
@@ -252,16 +253,17 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
 
 export const SummaryCardsContainer: React.FC = () => {
   const [summaryData, setSummaryData] = useState<any>(null);
+const { parquetFileName } = useAppContext(); 
   const [loading, setLoading] = useState(true);
-  const FILENAME = '1750132052464-aging besar.parquet';
 
   useEffect(() => {
+    if (!parquetFileName) return; // Wait for filename to be available
     setLoading(true);
-    getSummaryCardData(FILENAME)
+    getSummaryCardData(parquetFileName)
       .then(res => setSummaryData(res.data))
       .catch(() => setSummaryData(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [parquetFileName]); 
 
   if (loading || !summaryData) {
     return (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { useFileUpload } from '../hooks/useFileUpload';
@@ -9,11 +9,18 @@ import UploadStatus from '../components/upload/UploadStatus';
 
 const UploadPage: React.FC = () => {
   const navigate = useNavigate();
-  const { setUploadedFile } = useAppContext();
+  const { setUploadedFile,setParquetFileName } = useAppContext();
   const { uploadFile, fileName, status, error } = useFileUpload();
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarType, setSnackbarType] = useState<'success' | 'error' | 'info'>('info');
+  
+  // Sync fileName to AppContext after upload success
+  useEffect(() => {
+    if (status === 'success' && fileName) {
+      setParquetFileName(fileName);
+    }
+  }, [status, fileName, setParquetFileName]);
 
   const handleFileSelected = async (selectedFile: File) => {
     try {
@@ -23,6 +30,7 @@ const UploadPage: React.FC = () => {
       setSnackbarType('success');
       setShowSnackbar(true);
     } catch (err) {
+      // Show error from hook or fallback
       setSnackbarMessage(error || (err instanceof Error ? err.message : 'Upload failed'));
       setSnackbarType('error');
       setShowSnackbar(true);

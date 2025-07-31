@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { uploadDebtFile } from '../services/api';
-import type { UploadResponse } from '../types/dashboard.type';
+import type { UploadResponse } from '../types/upload.types';
 
 export const useFileUpload = () => {
   const [fileName, setFileName] = useState<string>('');
@@ -13,7 +13,7 @@ export const useFileUpload = () => {
     try {
       const result: UploadResponse = await uploadDebtFile(file);
       if (result.success) {
-        setFileName(result.filename);
+        setFileName(result.parquetFilename || file.name); // fallback to local file name if API doesn't return
         setStatus('success');
       } else {
         setError(result.message || 'Upload failed');
