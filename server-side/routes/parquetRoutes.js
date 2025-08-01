@@ -34,7 +34,7 @@ router.post('/debt-by-staff/:filename', dataController.getAgedDebtSummaryByStaff
 // Process debt by SMER Segment
 router.post('/debt-by-smer-segment/:filename', dataController.getAgedDebtSummaryBySmerSegment);
 // Process debt detailed table - partial
-router.get('/detailed-table/:filename', dataController.getDetailedDebtTableData);
+router.post('/detailed-table/:filename', dataController.getDetailedDebtTableData);
 
 // Driver Tree summary 
 router.post('/driver-tree-summary/:filename', dataController.getDriverTreeSummary);

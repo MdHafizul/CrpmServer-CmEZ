@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
-import type { SummaryCardApiResponse, FilterOptions, DebtByStationApiResponse,DebtByAccountClassApiResponse, DebtByAccountByADIDApiResponse,DebtByStaffApiResponse,DebtBySmerSegmentApiResponse } from '../types/dashboard.type';
-import { getSummaryCardData, getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData} from '../services/api';
+import type { SummaryCardApiResponse, FilterOptions, DebtByStationApiResponse,DebtByAccountClassApiResponse, DebtByAccountByADIDApiResponse,DebtByStaffApiResponse,DebtBySmerSegmentApiResponse, DetailedTableApiResponse } from '../types/dashboard.type';
+import { getSummaryCardData, getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData, getDetailedTableData } from '../services/api';
 
 interface AppContextType {
   summaryCardData: SummaryCardApiResponse['data'] | null;
@@ -88,6 +88,12 @@ interface AppContextType {
       smerSegments?: string[];
     }
   ) => Promise<void>;
+  detailedTableData: DetailedTableApiResponse | null;
+  fetchDetailedTable: (
+    filename: string,
+    params: any,
+    query?: { limit?: number; sortField?: string; sortDirection?: 'ASC' | 'DESC'; cursor?: string }
+  ) => Promise<void>;
   parquetFileName: string | null;
   setParquetFileName: (fileName: string | null) => void;
 }
@@ -162,7 +168,7 @@ export function useAppContext() {
 }
 
 const PARQUET_FILENAME_CACHE_KEY = 'parquetFileNameCache';
-const PARQUET_FILENAME_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const PARQUET_FILENAME_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function setParquetFileNameCache(fileName: string | null) {
   if (fileName) {
@@ -213,6 +219,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [debtByADIDData, setDebtByADIDData] = useState<DebtByAccountByADIDApiResponse['data'] | null>(null);
   const [debtByStaffData, setDebtByStaffData] = useState<DebtByStaffApiResponse['data'] | null>(null);
   const [debtBySmerSegmentData, setDebtBySmerSegmentData] = useState<DebtBySmerSegmentApiResponse['data'] | null>(null);
+  const [detailedTableData, setDetailedTableData] = useState<DetailedTableApiResponse | null>(null);
   const [parquetFileName, setParquetFileNameState] = useState<string | null>(() => getParquetFileNameCache());
 
   // Debug: log parquetFileName whenever it changes
@@ -387,6 +394,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Function to fetch detailed table data
+  const fetchDetailedTable = async (
+    filename: string,
+    params: any,
+    query: { limit?: number; sortField?: string; sortDirection?: 'ASC' | 'DESC'; cursor?: string } = {}
+  ) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getDetailedTableData(filename, params, query);
+      setDetailedTableData(result);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to fetch detailed table');
+      setDetailedTableData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filter options
   const businessAreaOptions: FilterOptions[] = [
@@ -558,6 +583,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       fetchDebtByStaff,
       debtBySmerSegmentData,
       fetchDebtBySmerSegment,
+      detailedTableData,
+      fetchDetailedTable,
       parquetFileName,
       setParquetFileName
     }}>

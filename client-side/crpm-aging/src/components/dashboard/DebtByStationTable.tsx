@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import Skeleton from '../ui/Skeleton';
 import { getDebtByStationData } from '../../services/api';
 import type { DebtByStationRow } from '../../types/dashboard.type';
 import { useAppContext } from '../../context/AppContext'; // <-- Add this import
@@ -187,12 +188,39 @@ const DebtByStationTable: React.FC<DebtByStationTableProps> = ({ filters, title 
 
   return (
     <Card title={title} >
-      <Table 
-        columns={columns} 
-        data={tableData} 
-        loading={loading}
-        emptyMessage="No debt data available"
-      />
+      {loading ? (
+        <div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {columns.map((col, idx) => (
+                  <th key={idx} className="px-6 py-3">
+                    <Skeleton width={80} height={20} className="mx-auto" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...Array(10)].map((_, i) => (
+                <tr key={i}>
+                  {columns.map((col, idx) => (
+                    <td key={idx} className="px-6 py-4">
+                      <Skeleton height={18} width="90%" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Table 
+          columns={columns} 
+          data={tableData} 
+          loading={false}
+          emptyMessage="No debt data available"
+        />
+      )}
     </Card>
   );
 };

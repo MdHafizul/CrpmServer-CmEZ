@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
 import { getDirectedGraphSummary } from '../../../services/api';
 import { useAppContext } from '../../../context/AppContext'; // <-- add this
+import Skeleton from '../../ui/Skeleton';
+
 // Fixed node positions for the vertical tree layout
 const NODE_POSITIONS: Record<string, { x: number; y: number }> = {
   root: { x: 300, y: 50 },
@@ -65,6 +67,36 @@ interface GraphData {
   edges: Edge[];
 }
 
+const CHART_CACHE_KEY = 'directedGraphChartCache';
+const CHART_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function setChartCache(fileName: string, data: any) {
+  if (!fileName) return;
+  const cacheObj = {
+    value: data,
+    expires: Date.now() + CHART_CACHE_TTL_MS
+  };
+  localStorage.setItem(`${CHART_CACHE_KEY}:${fileName}`, JSON.stringify(cacheObj));
+}
+
+function getChartCache(fileName: string): any | null {
+  if (!fileName) return null;
+  const raw = localStorage.getItem(`${CHART_CACHE_KEY}:${fileName}`);
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj.expires && obj.expires > Date.now()) {
+      return obj.value;
+    } else {
+      localStorage.removeItem(`${CHART_CACHE_KEY}:${fileName}`);
+      return null;
+    }
+  } catch {
+    localStorage.removeItem(`${CHART_CACHE_KEY}:${fileName}`);
+    return null;
+  }
+}
+
 const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }) => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
   const [zoomLevel, setZoomLevel] = useState<number>(0.8);
@@ -77,7 +109,13 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
   const { parquetFileName } = useAppContext(); // <-- use context
 
   useEffect(() => {
-    if (!parquetFileName) return; // only fetch if filename exists
+    if (!parquetFileName) return;
+    // Try cache first
+    const cached = getChartCache(parquetFileName);
+    if (cached) {
+      setGraphData(cached);
+      return;
+    }
     getDirectedGraphSummary(parquetFileName).then(res => {
       const apiData = res.data;
       // Map API data to fixed node positions
@@ -140,6 +178,7 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
         });
       });
       setGraphData({ nodes, edges });
+      setChartCache(parquetFileName, { nodes, edges });
     });
   }, [parquetFileName]); 
 
@@ -281,131 +320,138 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
       >
-        <svg
-          ref={svgRef}
-          width="100%"
-          height="100%"
-          viewBox="0 0 800 400"
-          style={{
-            transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
-            transformOrigin: 'center center',
-            transition: isDragging ? 'none' : 'transform 0.3s ease'
-          }}
-        >
-          {/* Background grid */}
-          <defs>
-            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="1" />
-            </pattern>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
-            </marker>
-            <marker id="arrowhead-highlighted" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
-            </marker>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
-          {/* Draw edges */}
-          {graphData.edges.map((edge) => {
-            const fromNode = graphData.nodes.find(n => n.id === edge.from);
-            const toNode = graphData.nodes.find(n => n.id === edge.to);
-            const isHighlighted = isEdgeHighlighted(edge);
-            if (fromNode && toNode) {
+        {graphData.nodes.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-70 z-20">
+            <Skeleton height={300} width="90%" className="rounded-xl mx-auto" />
+          </div>
+        ) : (
+          <svg
+            ref={svgRef}
+            width="100%"
+            height="100%"
+            viewBox="0 0 800 400"
+            style={{
+              willChange: 'transform',
+              transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
+              transformOrigin: 'center center',
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4,0,0.2,1)'
+            }}
+          >
+            {/* Background grid */}
+            <defs>
+              <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="1" />
+              </pattern>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
+              </marker>
+              <marker id="arrowhead-highlighted" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
+              </marker>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#grid)" />
+            {/* Draw edges */}
+            {graphData.edges.map((edge) => {
+              const fromNode = graphData.nodes.find(n => n.id === edge.from);
+              const toNode = graphData.nodes.find(n => n.id === edge.to);
+              const isHighlighted = isEdgeHighlighted(edge);
+              if (fromNode && toNode) {
+                return (
+                  <g key={`edge-${edge.from}-${edge.to}`} opacity={isHighlighted ? 1 : 0.3}>
+                    <path
+                      d={createPath(fromNode, toNode)}
+                      fill="none"
+                      stroke={isHighlighted ? edge.color : "#94a3b8"}
+                      strokeWidth="2"
+                      markerEnd={isHighlighted ? "url(#arrowhead-highlighted)" : "url(#arrowhead)"}
+                    />
+                  </g>
+                );
+              }
+              return null;
+            })}
+            {/* Draw nodes */}
+            {graphData.nodes.map(node => {
+              const nodeWidth = 120;
+              const nodeHeight = 70;
+              const isHighlighted = isNodeHighlighted(node.id);
+              const isSelected = selectedNode === node.id;
               return (
-                <g key={`edge-${edge.from}-${edge.to}`} opacity={isHighlighted ? 1 : 0.3}>
-                  <path
-                    d={createPath(fromNode, toNode)}
-                    fill="none"
-                    stroke={isHighlighted ? edge.color : "#94a3b8"}
-                    strokeWidth="2"
-                    markerEnd={isHighlighted ? "url(#arrowhead-highlighted)" : "url(#arrowhead)"}
+                <g
+                  key={`node-${node.id}`}
+                  transform={`translate(${node.position.x - nodeWidth / 2}, ${node.position.y - nodeHeight / 2})`}
+                  opacity={isHighlighted ? 1 : 0.4}
+                  onClick={() => setSelectedNode(isSelected ? null : node.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {/* Node shadow */}
+                  <rect
+                    width={nodeWidth}
+                    height={nodeHeight}
+                    rx={8}
+                    ry={8}
+                    fill="#000"
+                    opacity="0.1"
+                    transform="translate(2,2)"
                   />
+                  {/* Node background */}
+                  <rect
+                    width={nodeWidth}
+                    height={nodeHeight}
+                    rx={8}
+                    ry={8}
+                    fill={isSelected ? node.color : "#fff"}
+                    stroke={node.color}
+                    strokeWidth={isSelected ? 3 : 2}
+                    className="transition-all duration-200 hover:scale-105"
+                  />
+                  {/* Node label */}
+                  <text
+                    x={nodeWidth / 2}
+                    y={nodeHeight * 0.25}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fill={isSelected ? "white" : node.color}
+                    fontWeight="bold"
+                    fontSize="11"
+                    className="pointer-events-none"
+                  >
+                    {node.label}
+                  </text>
+                  {/* Amount */}
+                  {node.amount !== undefined && (
+                    <text
+                      x={nodeWidth / 2}
+                      y={nodeHeight * 0.55}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill={isSelected ? "white" : "black"}
+                      fontSize="10"
+                      fontWeight="medium"
+                      className="pointer-events-none"
+                    >
+                      {formatAmount(node.amount)}
+                    </text>
+                  )}
+                  {/* Number of accounts */}
+                  {node.accounts !== undefined && (
+                    <text
+                      x={nodeWidth / 2}
+                      y={nodeHeight * 0.8}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      fill={isSelected ? "white" : "#4b5563"}
+                      fontSize="9"
+                      className="pointer-events-none"
+                    >
+                      {formatAccounts(node.accounts)}
+                    </text>
+                  )}
                 </g>
               );
-            }
-            return null;
-          })}
-          {/* Draw nodes */}
-          {graphData.nodes.map(node => {
-            const nodeWidth = 120;
-            const nodeHeight = 70;
-            const isHighlighted = isNodeHighlighted(node.id);
-            const isSelected = selectedNode === node.id;
-            return (
-              <g
-                key={`node-${node.id}`}
-                transform={`translate(${node.position.x - nodeWidth / 2}, ${node.position.y - nodeHeight / 2})`}
-                opacity={isHighlighted ? 1 : 0.4}
-                onClick={() => setSelectedNode(isSelected ? null : node.id)}
-                style={{ cursor: 'pointer' }}
-              >
-                {/* Node shadow */}
-                <rect
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={8}
-                  ry={8}
-                  fill="#000"
-                  opacity="0.1"
-                  transform="translate(2,2)"
-                />
-                {/* Node background */}
-                <rect
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={8}
-                  ry={8}
-                  fill={isSelected ? node.color : "#fff"}
-                  stroke={node.color}
-                  strokeWidth={isSelected ? 3 : 2}
-                  className="transition-all duration-200 hover:scale-105"
-                />
-                {/* Node label */}
-                <text
-                  x={nodeWidth / 2}
-                  y={nodeHeight * 0.25}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fill={isSelected ? "white" : node.color}
-                  fontWeight="bold"
-                  fontSize="11"
-                  className="pointer-events-none"
-                >
-                  {node.label}
-                </text>
-                {/* Amount */}
-                {node.amount !== undefined && (
-                  <text
-                    x={nodeWidth / 2}
-                    y={nodeHeight * 0.55}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill={isSelected ? "white" : "black"}
-                    fontSize="10"
-                    fontWeight="medium"
-                    className="pointer-events-none"
-                  >
-                    {formatAmount(node.amount)}
-                  </text>
-                )}
-                {/* Number of accounts */}
-                {node.accounts !== undefined && (
-                  <text
-                    x={nodeWidth / 2}
-                    y={nodeHeight * 0.8}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fill={isSelected ? "white" : "#4b5563"}
-                    fontSize="9"
-                    className="pointer-events-none"
-                  >
-                    {formatAccounts(node.accounts)}
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
+            })}
+          </svg>
+        )}
         {/* Zoom level indicator */}
         <div className="absolute bottom-4 right-4 bg-white bg-opacity-90 px-3 py-1 rounded-md shadow-sm border">
           <span className="text-xs text-gray-600 font-medium">

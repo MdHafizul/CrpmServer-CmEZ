@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import Skeleton from '../ui/Skeleton';
 import { getDebtBySmerSegmentData } from '../../services/api';
 import type { DebtBySmerSegmentRow } from '../../types/dashboard.type';
 import { useAppContext } from '../../context/AppContext'; 
@@ -303,12 +304,39 @@ const SmerSegmentDebtTable: React.FC<SmerSegmentDebtTableProps> = ({ filters }) 
 
   return (
     <Card title="Summary Aged Debt By SMER Segment" headerRight={headerRight}>
-      <Table
-        columns={columns}
-        data={groupedRows}
-        loading={loading}
-        emptyMessage="No SMER segment debt data available"
-      />
+      {loading ? (
+        <div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {columns.map((col, idx) => (
+                  <th key={idx} className="px-6 py-3">
+                    <Skeleton width={80} height={20} className="mx-auto" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...Array(10)].map((_, i) => (
+                <tr key={i}>
+                  {columns.map((col, idx) => (
+                    <td key={idx} className="px-6 py-4">
+                      <Skeleton height={18} width="90%" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Table
+          columns={columns}
+          data={groupedRows}
+          loading={false}
+          emptyMessage="No SMER segment debt data available"
+        />
+      )}
     </Card>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import Skeleton from '../ui/Skeleton';
 import { getDebtByStaffData } from '../../services/api';
 import type { DebtByStaffRow } from '../../types/dashboard.type';
 import { useAppContext } from '../../context/AppContext';
@@ -202,14 +203,41 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
 
   return (
     <Card title="By Staff Debt">
-      <Table 
-        columns={columns} 
-        data={groupedRows} 
-        loading={loading}
-        emptyMessage="No staff debt data available"
-        className="staff-debt-table"
-        key="staff-debt-table"
-      />
+      {loading ? (
+        <div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {columns.map((col, idx) => (
+                  <th key={idx} className="px-6 py-3">
+                    <Skeleton width={80} height={20} className="mx-auto" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...Array(10)].map((_, i) => (
+                <tr key={i}>
+                  {columns.map((col, idx) => (
+                    <td key={idx} className="px-6 py-4">
+                      <Skeleton height={18} width="90%" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Table 
+          columns={columns} 
+          data={groupedRows} 
+          loading={false}
+          emptyMessage="No staff debt data available"
+          className="staff-debt-table"
+          key="staff-debt-table"
+        />
+      )}
     </Card>
   );
 };

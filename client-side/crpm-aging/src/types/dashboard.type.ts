@@ -241,6 +241,38 @@ export interface DebtBySmerSegmentApiResponse {
   };
 }
 
+export interface DetailedTableRow {
+  businessArea: string;
+  station: string;
+  contractAcc: string;
+  contractAccountName: string;
+  adid: string;
+  accClass: string;
+  accStatus: string;
+  noOfMonthsOutstanding: number;
+  staffId: string;
+  mitAmt: number;
+  lastPymtDate: string;
+  lastPymtAmt: number;
+  ttlOSAmt: number;
+  totalUndue: number;
+  curMthUnpaid: number;
+  totalUnpaid: number;
+}
+
+export interface DetailedTablePagination {
+  hasMore: boolean;
+  nextCursor?: string;
+  limit: number;
+}
+
+export interface DetailedTableApiResponse {
+  success: boolean;
+  filename: string;
+  items: DetailedTableRow[];
+  pagination: DetailedTablePagination;
+}
+
 export interface DriverTreeNode {
   name: string;
   value: number;

@@ -6,6 +6,7 @@ import { FiDownload, FiZoomIn, FiZoomOut, FiRefreshCw } from 'react-icons/fi';
 import { getDriverTreeSummary } from '../../../services/api';
 import type { DriverTreeApiResponse } from '../../../types/dashboard.type'; // Removed DriverTreeNode
 import { useAppContext } from '../../../context/AppContext'; // <-- Add
+import Skeleton from '../../ui/Skeleton';
 
 interface DriverTreeProps {
   mitAmount?: number; 
@@ -39,6 +40,36 @@ function groupAccountClasses(statusBranch: any) {
   ];
 }
 
+const DRIVER_TREE_CACHE_KEY = 'driverTreeChartCache';
+const DRIVER_TREE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function setDriverTreeCache(fileName: string, data: any) {
+  if (!fileName) return;
+  const cacheObj = {
+    value: data,
+    expires: Date.now() + DRIVER_TREE_CACHE_TTL_MS
+  };
+  localStorage.setItem(`${DRIVER_TREE_CACHE_KEY}:${fileName}`, JSON.stringify(cacheObj));
+}
+
+function getDriverTreeCache(fileName: string): any | null {
+  if (!fileName) return null;
+  const raw = localStorage.getItem(`${DRIVER_TREE_CACHE_KEY}:${fileName}`);
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj.expires && obj.expires > Date.now()) {
+      return obj.value;
+    } else {
+      localStorage.removeItem(`${DRIVER_TREE_CACHE_KEY}:${fileName}`);
+      return null;
+    }
+  } catch {
+    localStorage.removeItem(`${DRIVER_TREE_CACHE_KEY}:${fileName}`);
+    return null;
+  }
+}
+
 const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
   const [selectedDriverNode, setSelectedDriverNode] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
@@ -62,9 +93,24 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
   useEffect(() => {
     if (!parquetFileName) return;
     setLoading(true);
-    getDriverTreeSummary(parquetFileName) 
+    // Try cache first
+    const cached = getDriverTreeCache(parquetFileName);
+    if (cached) {
+      setDriverTreeApiData(cached);
+      setLoading(false);
+      // Set MIT info if present in cache
+      if (cached.mitAmount !== undefined && cached.mitNumOfAcc !== undefined) {
+        setMitInfo({
+          mitAmount: cached.mitAmount,
+          mitNumOfAcc: cached.mitNumOfAcc
+        });
+      }
+      return;
+    }
+    getDriverTreeSummary(parquetFileName)
       .then(res => {
         setDriverTreeApiData(res.data);
+        setDriverTreeCache(parquetFileName, res.data);
         // If MIT info is present, set it
         if (res.data && typeof res.data.mitAmount === 'number' && typeof res.data.mitNumOfAcc === 'number') {
           setMitInfo({
@@ -500,7 +546,7 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
       >
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-70 z-20">
-            <div className="text-lg text-gray-500 font-semibold">Loading Driver Tree...</div>
+            <Skeleton height={400} width="90%" className="rounded-xl mx-auto" />
           </div>
         ) : (
           <svg 
@@ -509,9 +555,10 @@ const DriverTree: React.FC<DriverTreeProps> = ({ mitAmount = 0 }) => {
             height="100%" 
             viewBox="0 0 3200 1600" 
             style={{
+              willChange: 'transform',
               transform: `scale(${zoomLevel}) translate(${panPosition.x}px, ${panPosition.y}px)`,
               transformOrigin: 'center center',
-              transition: isDragging ? 'none' : 'transform 0.3s ease'
+              transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4,0,0.2,1)'
             }}
           >
             {/* Background grid */}

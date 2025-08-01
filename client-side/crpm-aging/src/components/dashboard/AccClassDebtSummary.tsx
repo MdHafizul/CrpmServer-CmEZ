@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Card from '../ui/Card';
 import Table from '../ui/Table';
+import Skeleton from '../ui/Skeleton';
 import { getDebtByAccountClassData } from '../../services/api';
 import type { DebtByAccountClassRow } from '../../types/dashboard.type';
 import { useAppContext } from '../../context/AppContext';
@@ -341,9 +342,11 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
     },
   ];
 
-  // Compose columns based on governmentType
+  // Compose columns based on governmentType OR viewType
   const columns =
-    (filters.governmentType === 'government' || filters.governmentType === 'non-government')
+    (filters.governmentType === 'government' ||
+      filters.governmentType === 'non-government' ||
+      filters.viewType === 'agedDebt')
       ? [...baseColumns, ...commonColumns]
       : [...baseColumns, ...trColumns, ...commonColumns];
 
@@ -355,12 +358,39 @@ const AccClassDebtSummary: React.FC<AccClassDebtSummaryProps> = ({ filters }) =>
 
   return (
     <Card title="Summary Aged Debt By Acc Class" headerRight={headerRight}>
-      <Table
-        columns={columns}
-        data={groupedRows}
-        loading={loading}
-        emptyMessage="No account class debt data available"
-      />
+      {loading ? (
+        <div>
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                {columns.map((col, idx) => (
+                  <th key={idx} className="px-6 py-3">
+                    <Skeleton width={80} height={20} className="mx-auto" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {[...Array(10)].map((_, i) => (
+                <tr key={i}>
+                  {columns.map((col, idx) => (
+                    <td key={idx} className="px-6 py-4">
+                      <Skeleton height={18} width="90%" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <Table
+          columns={columns}
+          data={groupedRows}
+          loading={false}
+          emptyMessage="No account class debt data available"
+        />
+      )}
     </Card>
   );
 };

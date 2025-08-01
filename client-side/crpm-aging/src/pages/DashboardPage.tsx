@@ -10,6 +10,7 @@ import StaffDebtTable from '../components/dashboard/StaffDebtTable';
 import SmerSegmentDebtTable from '../components/dashboard/SmerSegmentDebtTable';
 import DriverTree from '../components/dashboard/charts/DriverTree';
 import DirectedGraph from '../components/dashboard/charts/DirectedGraph';
+import DetailedTable from '../components/dashboard/DetailedTable';
 
 const DashboardPage: React.FC = () => {
   const { filters } = useAppContext();
@@ -27,6 +28,7 @@ const DashboardPage: React.FC = () => {
         <AccDefinitionDebt filters={filters} />
         <SmerSegmentDebtTable filters={filters} />
         <StaffDebtTable filters={filters} />
+        <DetailedTable filters={filters} />
       </div>
     </Layout>
   );

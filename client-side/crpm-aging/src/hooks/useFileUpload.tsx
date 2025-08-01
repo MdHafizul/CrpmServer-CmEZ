@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { uploadDebtFile } from '../services/api';
 import type { UploadResponse } from '../types/upload.types';
+import { uploadDebtFile } from '../services/api';
 
 export const useFileUpload = () => {
   const [fileName, setFileName] = useState<string>('');

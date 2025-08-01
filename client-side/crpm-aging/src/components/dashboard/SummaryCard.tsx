@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import Card from '../ui/Card';
+import Skeleton from '../ui/Skeleton';
 import { formatCurrency } from '../../utils/formatter';
 import { getSummaryCardData } from '../../services/api';
 import { useAppContext } from '../../context/AppContext';
@@ -103,6 +104,17 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
     );
   };
 
+  // Animation control for chart
+  const [animateChart, setAnimateChart] = useState(false);
+
+  useEffect(() => {
+    // Enable animation only after first mount
+    if (!animateChart) {
+      const timer = setTimeout(() => setAnimateChart(true), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [animateChart]);
+
   const renderChart = () => {
     const chartData = data;
     if (!chartData.length) {
@@ -138,7 +150,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
             paddingAngle={3}
             dataKey="value"
             animationBegin={0}
-            animationDuration={1500}
+            animationDuration={animateChart ? 1200 : 0}
+            isAnimationActive={animateChart}
             stroke="white"
             strokeWidth={3}
             labelLine={false}
@@ -265,21 +278,36 @@ const { parquetFileName } = useAppContext();
       .finally(() => setLoading(false));
   }, [parquetFileName]); 
 
-  if (loading || !summaryData) {
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {[1, 2, 3].map(i => (
-          <Card key={i} className="h-96">
-            <div className="animate-pulse space-y-4">
-              <div className="h-6 bg-gray-200 rounded w-3/4"></div>
-              <div className="h-8 bg-gray-200 rounded w-1/2"></div>
-              <div className="h-64 bg-gray-200 rounded"></div>
+if (loading || !summaryData) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {[1, 2, 3].map(i => (
+        <Card key={i} className="h-auto min-h-[400px]">
+          <div className="space-y-6">
+            {/* Skeleton for card header */}
+            <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
+              <Skeleton width={48} height={48} className="rounded-xl" />
+              <div>
+                <Skeleton width={120} height={24} className="mb-2" />
+                <Skeleton width={80} height={18} />
+              </div>
             </div>
-          </Card>
-        ))}
-      </div>
-    );
-  }
+            {/* Skeleton for chart */}
+            <div className="h-80 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-200 p-4 flex items-center justify-center">
+              <Skeleton width="80%" height={180} className="rounded-xl mx-auto" />
+            </div>
+            {/* Skeleton for categories */}
+            <div className="space-y-4 pt-4 border-t border-gray-200">
+              {[...Array(3)].map((_, idx) => (
+                <Skeleton key={idx} height={32} width="100%" className="rounded mb-2" />
+              ))}
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
   // Map API fields to expected variables
   const active = summaryData.Active?.["TTL O/S Amt"] ?? 0;
