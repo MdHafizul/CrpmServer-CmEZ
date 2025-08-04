@@ -221,7 +221,7 @@ const DetailedTable: React.FC<DetailedTableProps> = ({ filters }) => {
       accessor: 'ttlOSAmt',
       align: 'right' as const,
       cell: (value: number) => (
-        <span className="font-bold text-red-600">
+        <span className={`font-bold ${value > 0 ? 'text-red-600' : 'text-green-600'}`}>
           RM {value?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
         </span>
       )

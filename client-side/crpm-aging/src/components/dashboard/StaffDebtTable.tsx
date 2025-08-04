@@ -208,9 +208,9 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                {columns.map((col, idx) => (
+                {columns.map((_, idx) => (
                   <th key={idx} className="px-6 py-3">
-                    <Skeleton width={80} height={20} className="mx-auto" />
+                  <Skeleton width={80} height={20} className="mx-auto" />
                   </th>
                 ))}
               </tr>
@@ -218,7 +218,7 @@ const StaffDebtTable: React.FC<StaffDebtTableProps> = ({ filters }) => {
             <tbody>
               {[...Array(10)].map((_, i) => (
                 <tr key={i}>
-                  {columns.map((col, idx) => (
+                  {columns.map((_, idx) => (
                     <td key={idx} className="px-6 py-4">
                       <Skeleton height={18} width="90%" />
                     </td>

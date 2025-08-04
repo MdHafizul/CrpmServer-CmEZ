@@ -52,7 +52,9 @@ const AccDefinitionDebt: React.FC<AccDefinitionDebtProps> = ({ filters }) => {
       accStatus: filters.accStatus !== 'all' ? filters.accStatus : null,
       balanceType: filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
       accountClass: filters.accClass !== 'all' ? filters.accClass : '',
+      agingBucket: filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
       totalOutstandingRange: getDebtRangeObj(filters.debtRange),
+      smerSegments: filters.smerSegments,
     };
     getDebtByAdidData(parquetFileName, apiParams)
       .then(res => {

@@ -14,7 +14,6 @@ import DetailedTable from '../components/dashboard/DetailedTable';
 
 const DashboardPage: React.FC = () => {
   const { filters } = useAppContext();
-  
   return (
     <Layout>
       <div className="space-y-6">
