@@ -3,7 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
 const {
-  getFileReader,
   convertBigIntToNumber,
   buildWhereClauses,
   initializeDuckDB,
@@ -35,6 +34,40 @@ exports.convertExcelToParquet = async (excelPath) => {
   `;
   await dbRun(query);
   return parquetPath;
+};
+
+
+// Convert a parquet file to Excel and return the Excel file path.
+exports.convertParquetToExcel = async (parquetFilename) => {
+  await initializeDuckDB(dbRun);
+  // Ensure the excel extension is loaded
+  await dbRun("INSTALL 'excel';");
+  await dbRun("LOAD 'excel';");
+  const parquetPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
+  // Use a unique temp file for Excel export to avoid file-in-use errors
+  const timestamp = Date.now();
+  const excelPath = parquetPath.replace(/\.parquet$/i, `_${timestamp}.xlsx`);
+  const normalizedExcelPath = path.resolve(excelPath).replace(/\\/g, '/');
+  const normalizedParquetPath = path.resolve(parquetPath).replace(/\\/g, '/');
+  // Use CSV as fallback if XLSX is not supported in your DuckDB build
+  const query = `
+    COPY (SELECT * FROM read_parquet('${normalizedParquetPath}')) TO '${normalizedExcelPath}' (FORMAT 'xlsx', HEADER TRUE);
+  `;
+  try {
+    await dbRun(query);
+    return excelPath;
+  } catch (err) {
+    // Fallback: try CSV if XLSX is not supported
+    if (String(err).includes('Copy Function with name xlsx does not exist')) {
+      const csvPath = excelPath.replace(/\.xlsx$/i, '.csv');
+      const csvQuery = `
+        COPY (SELECT * FROM read_parquet('${normalizedParquetPath}')) TO '${csvPath}' (FORMAT 'csv', HEADER TRUE);
+      `;
+      await dbRun(csvQuery);
+      return csvPath;
+    }
+    throw err;
+  }
 };
 
 /*

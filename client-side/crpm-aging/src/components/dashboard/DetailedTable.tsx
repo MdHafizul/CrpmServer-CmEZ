@@ -14,8 +14,8 @@ const PAGE_SIZE = 100;
 
 const DetailedTable: React.FC<DetailedTableProps> = ({ filters }) => {
   const { parquetFileName, fetchDetailedTable, detailedTableData, loading } = useAppContext();
-  const [sortField, setSortField] = useState<string>('Contract Acc');
-  const [sortDirection, setSortDirection] = useState<'ASC' | 'DESC'>('ASC');
+  const [sortField] = useState<string>('Contract Acc');
+  const [sortDirection] = useState<'ASC' | 'DESC'>('ASC');
   const [cursor, setCursor] = useState<string | undefined>(undefined);
 
   // Compose API params from filters
@@ -259,9 +259,8 @@ const DetailedTable: React.FC<DetailedTableProps> = ({ filters }) => {
     : [...baseColumns, ...agedDebtColumns];
   
   // Calculate pagination based on filtered data
-  const totalPages = Math.ceil((detailedTableData?.items?.length || 0) / PAGE_SIZE);
   const paginatedData = filteredData.slice(0, PAGE_SIZE);
-  
+
   const headerRight = (
     <div className="flex flex-wrap gap-3 items-center">
       {/* Range Bracket Filter */}
@@ -296,7 +295,7 @@ const DetailedTable: React.FC<DetailedTableProps> = ({ filters }) => {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  {columns.map((col, idx) => (
+                  {columns.map((_, idx) => (
                     <th key={idx} className="px-6 py-3">
                       <Skeleton width={80} height={20} className="mx-auto" />
                     </th>
@@ -306,7 +305,7 @@ const DetailedTable: React.FC<DetailedTableProps> = ({ filters }) => {
               <tbody>
                 {[...Array(PAGE_SIZE)].map((_, i) => (
                   <tr key={i}>
-                    {columns.map((col, idx) => (
+                    {columns.map((_, idx) => (
                       <td key={idx} className="px-6 py-4">
                         <Skeleton height={18} width="90%" />
                       </td>

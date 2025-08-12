@@ -97,7 +97,7 @@ function getChartCache(fileName: string): any | null {
   }
 }
 
-const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }) => {
+const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree By Smer Segment" }) => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], edges: [] });
   const [zoomLevel, setZoomLevel] = useState<number>(0.8);
   const [panPosition, setPanPosition] = useState<{ x: number, y: number }>({ x: 0, y: 0 });
@@ -342,12 +342,21 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
               <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
                 <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f1f5f9" strokeWidth="1" />
               </pattern>
-              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#64748b" />
-              </marker>
-              <marker id="arrowhead-highlighted" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" />
-              </marker>
+              {/* Dynamically generate arrowhead markers for each unique edge color */}
+              {Array.from(new Set(graphData.edges.map(e => e.color))).map((color, idx) => (
+                <marker
+                  key={color}
+                  id={`arrowhead-${color.replace('#', '')}`}
+                  markerWidth="10"
+                  markerHeight="7"
+                  refX="9"
+                  refY="3.5"
+                  orient="auto"
+                  markerUnits="strokeWidth"
+                >
+                  <polygon points="0 0, 10 3.5, 0 7" fill={color} />
+                </marker>
+              ))}
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
             {/* Draw edges */}
@@ -356,6 +365,8 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
               const toNode = graphData.nodes.find(n => n.id === edge.to);
               const isHighlighted = isEdgeHighlighted(edge);
               if (fromNode && toNode) {
+                // Use dynamic markerEnd based on edge color
+                const markerId = `arrowhead-${edge.color.replace('#', '')}`;
                 return (
                   <g key={`edge-${edge.from}-${edge.to}`} opacity={isHighlighted ? 1 : 0.3}>
                     <path
@@ -363,7 +374,7 @@ const DirectedGraph: React.FC<{ title?: string }> = ({ title = "Driver Tree 2" }
                       fill="none"
                       stroke={isHighlighted ? edge.color : "#94a3b8"}
                       strokeWidth="2"
-                      markerEnd={isHighlighted ? "url(#arrowhead-highlighted)" : "url(#arrowhead)"}
+                      markerEnd={`url(#${markerId})`}
                     />
                   </g>
                 );

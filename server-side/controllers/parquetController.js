@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const mime = require('mime-types');
 const parquetServices = require('../services/DebtAging/parquet');
 const { convertBigIntsInObject } = require('../utils/parquetHelper');
 
@@ -23,7 +24,7 @@ exports.uploadAndProcess = async (req, res) => {
     res.json({
       success: true,
       message: 'File processed successfully',
-      parquetFilename: path.basename(parquetFilename) 
+      parquetFilename: path.basename(parquetFilename)
     });
   } catch (error) {
     console.error('Processing error:', error);
@@ -206,22 +207,23 @@ exports.getDetailedDebtTableData = async (req, res, next) => {
 exports.getAllDataFromParquet = async (req, res) => {
   try {
     const { filename } = req.params;
-    const { cursor, limit, sortField, sortDirection } = req.query;
+    // Call the parquet service to convert parquet to Excel and get the file path
+    const excelPath = await parquetServices.convertParquetToExcel(filename);
 
-    const data = await parquetServices.getAllDataFromParquet(filename, {
-      cursor,
-      limit: limit ? parseInt(limit) : undefined,
-      sortField,
-      sortDirection
+    // Set headers for Excel download
+    res.setHeader('Content-Type', mime.lookup('xlsx') || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    // Change the download file name here:
+    res.setHeader('Content-Disposition', `attachment; filename="FULLDATA CRPM Aging - ${filename.replace(/\.parquet$/i, '.xlsx')}"`);
+
+    // Stream the file to the response
+    const stream = fs.createReadStream(excelPath);
+    stream.pipe(res);
+    stream.on('end', () => {
+      // Optionally, delete the temp Excel file after sending
+      fs.unlink(excelPath, () => { });
     });
-
-    // Convert BigInt values before sending response
-    const convertedData = convertBigIntsInObject(data);
-
-    res.json({
-      success: true,
-      filename,
-      ...convertedData
+    stream.on('error', (err) => {
+      res.status(500).send('Error sending Excel file');
     });
   } catch (error) {
     console.error('Get all data error:', error);

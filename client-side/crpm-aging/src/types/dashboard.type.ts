@@ -242,6 +242,7 @@ export interface DebtBySmerSegmentApiResponse {
 }
 
 export interface DetailedTableRow {
+  [key: string]: any;
   businessArea: string;
   station: string;
   contractAcc: string;

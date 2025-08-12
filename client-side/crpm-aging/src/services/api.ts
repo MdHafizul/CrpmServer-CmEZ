@@ -103,6 +103,23 @@ export const getDetailedTableData = async (
   return response.data;
 };
 
+export const getAllDataFromParquet = async (
+  filename: string
+): Promise<void> => {
+  const url = `${API_BASE_URL}/api/v2/crpm/alldata/${encodeURIComponent(filename)}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch all data as Excel');
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = downloadUrl;
+  a.download = `FULLDATA CRPM Aging - ${filename.replace(/\.parquet$/i, '.xlsx')}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(downloadUrl);
+};
+
 export const getDriverTreeSummary = async (filename: string) => {
   const url = `${API_BASE_URL}/api/v2/crpm/driver-tree-summary/${encodeURIComponent(filename)}`;
   const response = await axios.post(url);

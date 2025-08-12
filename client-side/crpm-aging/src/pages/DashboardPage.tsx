@@ -11,16 +11,20 @@ import SmerSegmentDebtTable from '../components/dashboard/SmerSegmentDebtTable';
 import DriverTree from '../components/dashboard/charts/DriverTree';
 import DirectedGraph from '../components/dashboard/charts/DirectedGraph';
 import DetailedTable from '../components/dashboard/DetailedTable';
+import ReportButton from '../components/ui/ReportButton';
 
 const DashboardPage: React.FC = () => {
   const { filters } = useAppContext();
+
   return (
     <Layout>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-gray-900">Aged Debt Analytics Dashboard</h1>
+        <div className="flex justify-end">
+          <ReportButton />
+        </div>
         <SummaryCardsContainer />
         <DriverTree />
-        <DirectedGraph/>
+        <DirectedGraph />
         <FilterSection filters={filters} />
         <DebtByStationTable filters={filters} />
         <AccClassDebtSummary filters={filters} />
