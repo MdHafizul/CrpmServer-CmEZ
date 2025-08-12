@@ -102,7 +102,7 @@ async function captureDriverTreeReactFlow(): Promise<string | null> {
   }
 }
 
-export async function generateDashboardExcelReport(parquetFileName: string, filters: any) {
+export async function generateDashboardSummaryExcelReport(parquetFileName: string, filters: any) {
   // Show loading indicator
   const loadingIndicator = document.createElement('div');
   loadingIndicator.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -121,6 +121,7 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
   };
 
   try {
+    // --- SUMMARY REPORT LOGIC ---
     // Prepare filter params for API
     const getDebtRangeObj = (range: string) => {
       if (!range || range === 'all') return null;
@@ -163,7 +164,6 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
       accClassRes,
       accDefRes,
       smerSegmentRes,
-      staffRes
     ] = await Promise.all([
       getSummaryCardData(parquetFileName),
       getDriverTreeSummary(parquetFileName),
@@ -190,9 +190,19 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
         top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
       }
     };
-    const totalRowStyle = {
+    // Station total row style (light yellow)
+    const stationTotalRowStyle = {
       font: { bold: true },
-      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9C4' } },
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: {
+        top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+      }
+    };
+    // Grand total row style (light green)
+    const grandTotalRowStyle = {
+      font: { bold: true },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC8E6C9' } },
       alignment: { horizontal: 'center', vertical: 'middle' },
       border: {
         top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'double' }, right: { style: 'thin' }
@@ -215,9 +225,9 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
       columns.forEach((col, idx) => { if (col.width) sheet.getColumn(idx + 1).width = col.width; });
       return sheet;
     }
-
-    // Helper to add data rows
-    function addDataRows(sheet: ExcelJS.Worksheet, columns: any[], data: any[], formatters: Record<number, any> = {}) {
+    
+    // Helper to add data rows with support for custom row styles
+    function addDataRows(sheet: ExcelJS.Worksheet, columns: any[], data: any[], formatters: Record<number, any> = {}, rowStyleFn?: (row: any) => any) {
       data.forEach((row) => {
         const values = columns.map(col => row[col.key]);
         const excelRow = sheet.addRow(values);
@@ -225,8 +235,11 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
         Object.entries(formatters).forEach(([colIdx, fmt]) => {
           if (fmt && fmt.numFmt) excelRow.getCell(Number(colIdx)).numFmt = fmt.numFmt;
         });
-        // Total row styling
-        if (row.isTotal || row.isGrandTotal) excelRow.eachCell(cell => Object.assign(cell, totalRowStyle));
+        // Apply custom row style if provided
+        if (rowStyleFn) {
+          const style = rowStyleFn(row);
+          if (style) excelRow.eachCell(cell => Object.assign(cell, style));
+        }
       });
     }
 
@@ -357,10 +370,69 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
       { header: 'Total Unpaid', key: 'totalUnpaid', width: 20 },
       { header: 'MIT Amt', key: 'mitAmt', width: 15 }
     ]);
-    addDataRows(accClassSheet, [
-      { key: 'businessArea' }, { key: 'station' }, { key: 'accountClass' }, { key: 'numberOfAccounts' },
-      { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
-    ], accClassRes.data.data, { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } });
+    const accClassData = accClassRes.data.data;
+    let accClassRowsWithTotals: any[] = [];
+    let stationRows: any[] = [];
+    accClassData.forEach((row, idx) => {
+      accClassRowsWithTotals.push(row);
+      stationRows.push(row);
+      const nextRow = accClassData[idx + 1];
+      if (!nextRow || nextRow.station !== row.station) {
+        // Calculate station total for required fields
+        const totalNumberOfAccounts = stationRows.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+        const totalTtlOSAmt = stationRows.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+        const totalCurMthUnpaid = stationRows.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+        const totalPercentOfTotal = stationRows.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+        const totalTotalUndue = stationRows.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+        const totalTotalUnpaid = stationRows.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+        accClassRowsWithTotals.push({
+          businessArea: row.businessArea,
+          station: row.station,
+          accountClass: 'STATION TOTAL',
+          numberOfAccounts: totalNumberOfAccounts,
+          ttlOSAmt: totalTtlOSAmt,
+          percentOfTotal: totalPercentOfTotal.toFixed(2),
+          totalUndue: totalTotalUndue,
+          curMthUnpaid: totalCurMthUnpaid,
+          totalUnpaid: totalTotalUnpaid,
+          mitAmt: '',
+          isStationTotal: true
+        });
+        stationRows = [];
+      }
+    });
+    // Grand total for required fields
+    if (accClassData.length > 0) {
+      const totalNumberOfAccounts = accClassData.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+      const totalTtlOSAmt = accClassData.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+      const totalCurMthUnpaid = accClassData.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+      const totalPercentOfTotal = accClassData.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+      const totalTotalUndue = accClassData.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+      const totalTotalUnpaid = accClassData.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+      accClassRowsWithTotals.push({
+        businessArea: '',
+        station: '',
+        accountClass: 'GRAND TOTAL',
+        numberOfAccounts: totalNumberOfAccounts,
+        ttlOSAmt: totalTtlOSAmt,
+        percentOfTotal: totalPercentOfTotal.toFixed(2),
+        totalUndue: totalTotalUndue,
+        curMthUnpaid: totalCurMthUnpaid,
+        totalUnpaid: totalTotalUnpaid,
+        mitAmt: '',
+        isGrandTotal: true
+      });
+    }
+    addDataRows(
+      accClassSheet,
+      [
+        { key: 'businessArea' }, { key: 'station' }, { key: 'accountClass' }, { key: 'numberOfAccounts' },
+        { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
+      ],
+      accClassRowsWithTotals,
+      { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } },
+      (row) => row.isGrandTotal ? grandTotalRowStyle : row.isStationTotal ? stationTotalRowStyle : undefined
+    );
 
     // Sheet 6: By ADID
     updateProgress('Adding By ADID data...');
@@ -376,10 +448,69 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
       { header: 'Total Unpaid', key: 'totalUnpaid', width: 20 },
       { header: 'MIT Amt', key: 'mitAmt', width: 15 }
     ]);
-    addDataRows(adidSheet, [
-      { key: 'businessArea' }, { key: 'station' }, { key: 'adid' }, { key: 'numberOfAccounts' },
-      { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
-    ], accDefRes.data.data, { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } });
+    // #sym:adidSheet
+    const adidData = accDefRes.data.data;
+    let adidRowsWithTotals: any[] = [];
+    let adidStationRows: any[] = [];
+    adidData.forEach((row, idx) => {
+      adidRowsWithTotals.push(row);
+      adidStationRows.push(row);
+      const nextRow = adidData[idx + 1];
+      if (!nextRow || nextRow.station !== row.station) {
+        const totalNumberOfAccounts = adidStationRows.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+        const totalTtlOSAmt = adidStationRows.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+        const totalCurMthUnpaid = adidStationRows.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+        const totalPercentOfTotal = adidStationRows.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+        const totalTotalUndue = adidStationRows.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+        const totalTotalUnpaid = adidStationRows.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+        adidRowsWithTotals.push({
+          businessArea: row.businessArea,
+          station: row.station,
+          adid: 'STATION TOTAL',
+          numberOfAccounts: totalNumberOfAccounts,
+          ttlOSAmt: totalTtlOSAmt,
+          percentOfTotal: totalPercentOfTotal.toFixed(2),
+          totalUndue: totalTotalUndue,
+          curMthUnpaid: totalCurMthUnpaid,
+          totalUnpaid: totalTotalUnpaid,
+          mitAmt: '',
+          isStationTotal: true
+        });
+        adidStationRows = [];
+      }
+    });
+    // Grand total for required fields
+    if (adidData.length > 0) {
+      const totalNumberOfAccounts = adidData.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+      const totalTtlOSAmt = adidData.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+      const totalCurMthUnpaid = adidData.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+      const totalPercentOfTotal = adidData.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+      const totalTotalUndue = adidData.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+      const totalTotalUnpaid = adidData.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+      adidRowsWithTotals.push({
+        businessArea: '',
+        station: '',
+        adid: 'GRAND TOTAL',
+        numberOfAccounts: totalNumberOfAccounts,
+        ttlOSAmt: totalTtlOSAmt,
+        percentOfTotal: totalPercentOfTotal.toFixed(2),
+        totalUndue: totalTotalUndue,
+        curMthUnpaid: totalCurMthUnpaid,
+        totalUnpaid: totalTotalUnpaid,
+        mitAmt: '',
+        isGrandTotal: true
+      });
+    }
+    addDataRows(
+      adidSheet,
+      [
+        { key: 'businessArea' }, { key: 'station' }, { key: 'adid' }, { key: 'numberOfAccounts' },
+        { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
+      ],
+      adidRowsWithTotals,
+      { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } },
+      (row) => row.isGrandTotal ? grandTotalRowStyle : row.isStationTotal ? stationTotalRowStyle : undefined
+    );
 
     // Sheet 7: By SMER Segment
     updateProgress('Adding By SMER Segment data...');
@@ -395,30 +526,75 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
       { header: 'Total Unpaid', key: 'totalUnpaid', width: 20 },
       { header: 'MIT Amt', key: 'mitAmt', width: 15 }
     ]);
-    addDataRows(smerSheet, [
-      { key: 'businessArea' }, { key: 'station' }, { key: 'segment' }, { key: 'numberOfAccounts' },
-      { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
-    ], smerSegmentRes.data.data, { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } });
-
-    // Sheet 8: By Staff
-    updateProgress('Adding By Staff data...');
-    const staffSheet = addSheetWithHeaders('By Staff', 'Debt By Staff', [
-      { header: 'Business Area', key: 'businessArea', width: 20 },
-      { header: 'Station', key: 'station', width: 20 },
-      { header: 'Number of Accounts', key: 'numberOfAccounts', width: 20 },
-      { header: 'TTL O/S Amt', key: 'ttlOSAmt', width: 20 },
-      { header: '% of Total', key: 'percentOfTotal', width: 15 },
-      { header: 'Total Undue', key: 'totalUndue', width: 20 },
-      { header: 'Cur.Mth Unpaid', key: 'curMthUnpaid', width: 20 },
-      { header: 'Total Unpaid', key: 'totalUnpaid', width: 20 }
-    ]);
-    addDataRows(staffSheet, [
-      { key: 'businessArea' }, { key: 'station' }, { key: 'numberOfAccounts' }, { key: 'ttlOSAmt' },
-      { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }
-    ], staffRes.data.data, { 4: { numFmt: '#,##0.00' }, 6: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' } });
+    // #sym:smerSheet
+    const smerData = smerSegmentRes.data.data;
+    let smerRowsWithTotals: any[] = [];
+    let smerStationRows: any[] = [];
+    smerData.forEach((row, idx) => {
+      smerRowsWithTotals.push(row);
+      smerStationRows.push(row);
+      const nextRow = smerData[idx + 1];
+      if (!nextRow || nextRow.station !== row.station) {
+        const totalNumberOfAccounts = smerStationRows.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+        const totalTtlOSAmt = smerStationRows.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+        const totalCurMthUnpaid = smerStationRows.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+        const totalPercentOfTotal = smerStationRows.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+        const totalTotalUndue = smerStationRows.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+        const totalTotalUnpaid = smerStationRows.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+        smerRowsWithTotals.push({
+          businessArea: row.businessArea,
+          station: row.station,
+          segment: 'STATION TOTAL',
+          numberOfAccounts: totalNumberOfAccounts,
+          ttlOSAmt: totalTtlOSAmt,
+          percentOfTotal: totalPercentOfTotal.toFixed(2),
+          totalUndue: totalTotalUndue,
+          curMthUnpaid: totalCurMthUnpaid,
+          totalUnpaid: totalTotalUnpaid,
+          mitAmt: '',
+          isStationTotal: true
+        });
+        smerStationRows = [];
+      }
+    });
+    // Grand total for required fields
+    if (smerData.length > 0) {
+      const totalNumberOfAccounts = smerData.reduce((sum, r) => sum + (Number(r.numberOfAccounts) || 0), 0);
+      const totalTtlOSAmt = smerData.reduce((sum, r) => sum + (Number(r.ttlOSAmt) || 0), 0);
+      const totalCurMthUnpaid = smerData.reduce((sum, r) => sum + (Number(r.curMthUnpaid) || 0), 0);
+      const totalPercentOfTotal = smerData.reduce((sum, r) => sum + (parseFloat(r.percentOfTotal) || 0), 0);
+      const totalTotalUndue = smerData.reduce((sum, r) => sum + (Number(r.totalUndue) || 0), 0);
+      const totalTotalUnpaid = smerData.reduce((sum, r) => sum + (Number(r.totalUnpaid) || 0), 0);
+      smerRowsWithTotals.push({
+        businessArea: '',
+        station: '',
+        segment: 'GRAND TOTAL',
+        numberOfAccounts: totalNumberOfAccounts,
+        ttlOSAmt: totalTtlOSAmt,
+        percentOfTotal: totalPercentOfTotal.toFixed(2),
+        totalUndue: totalTotalUndue,
+        curMthUnpaid: totalCurMthUnpaid,
+        totalUnpaid: totalTotalUnpaid,
+        mitAmt: '',
+        isGrandTotal: true
+      });
+    }
+    addDataRows(
+      smerSheet,
+      [
+        { key: 'businessArea' }, { key: 'station' }, { key: 'segment' }, { key: 'numberOfAccounts' },
+        { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }, { key: 'mitAmt' }
+      ],
+      smerRowsWithTotals,
+      { 5: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' }, 9: { numFmt: '#,##0.00' }, 10: { numFmt: '#,##0.00' } },
+      (row) => row.isGrandTotal ? grandTotalRowStyle : row.isStationTotal ? stationTotalRowStyle : undefined
+    );
 
     // Save and download the main Excel report (dashboard)
     updateProgress('Saving Excel file...');
+        setTimeout(() => {
+      document.body.removeChild(loadingIndicator);
+    }, 2000);
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = window.URL.createObjectURL(blob);
@@ -430,7 +606,35 @@ export async function generateDashboardExcelReport(parquetFileName: string, filt
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  } catch (error: any) {
+    updateProgress('Error generating report. Please try again.');
+    setTimeout(() => {
+      document.body.removeChild(loadingIndicator);
+    }, 2000);
+    console.error('[excelReport] Report generation failed:', error);
+    throw error;
+  }
+}
 
+export async function generateDashboardFullExcelReport(parquetFileName: string,) {
+  // Show loading indicator
+  const loadingIndicator = document.createElement('div');
+  loadingIndicator.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+  loadingIndicator.innerHTML = `
+    <div class="bg-white p-6 rounded-lg shadow-lg text-center">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+      <p class="text-lg font-semibold">Generating Excel Report...</p>
+      <p class="text-sm text-gray-500" id="progress-text">Fetching data...</p>
+    </div>
+  `;
+  document.body.appendChild(loadingIndicator);
+
+  const updateProgress = (text: string) => {
+    const el = document.getElementById('progress-text');
+    if (el) el.textContent = text;
+  };
+
+  try {
     // --- Download converted parquet-to-xlsx file ---
     updateProgress('Downloading full Excel file (converted from parquet)...');
     try {

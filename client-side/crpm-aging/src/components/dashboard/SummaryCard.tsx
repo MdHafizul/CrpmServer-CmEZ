@@ -66,7 +66,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({
   };
 
   const renderCustomizedLabel = (props: any) => {
-    const { cx, cy, midAngle, innerRadius, outerRadius, percent, index } = props;
+    const { cx, cy, midAngle, outerRadius, percent, index } = props;
     const RADIAN = Math.PI / 180;
     const radius = outerRadius * 1.35;
     const x = cx + radius * Math.cos(-midAngle * RADIAN);
