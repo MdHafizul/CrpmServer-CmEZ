@@ -16,13 +16,15 @@ services:
     build:
       context: ./client-side/status21-app
       dockerfile: Dockerfile
+      # Build-time API used by Next.js server (internal Docker network hostname)
       args:
         API_URL: http://backend:3000
     image: hapejoy/status21-client:latest
     ports:
       - "8080:8080"
     environment:
-      - API_URL=http://backend:3000
+      # Client-side API should be relative so browser calls go through reverse-proxy
+      - API_URL=/api
       - PORT=8080
     depends_on:
       - backend
@@ -34,13 +36,14 @@ services:
     build:
       context: ./client-side/crpm-aging
       dockerfile: Dockerfile
+      # Build-time API for the static app; use relative '/api' so proxy handles routing
       args:
-        VITE_API_BASE_URL: http://backend:3000
+        VITE_API_BASE_URL: /api
     image: hapejoy/crpm-aging-client:latest
     ports:
       - "8081:80"
     environment:
-      - VITE_API_BASE_URL=http://backend:3000
+      - VITE_API_BASE_URL=/api
     depends_on:
       - backend
     networks:
@@ -57,6 +60,7 @@ services:
     depends_on:
       - status21
       - crpm-aging
+      - backend
     networks:
       - app-network
     restart: unless-stopped
