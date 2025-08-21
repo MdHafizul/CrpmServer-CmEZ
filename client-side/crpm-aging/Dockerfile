@@ -2,7 +2,7 @@
 FROM node:20 AS builder
 
 WORKDIR /app
-ARG VITE_API_BASE_URL=http://backend:3000
+ARG VITE_API_BASE_URL=
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 # Install deps and build
@@ -27,5 +27,3 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
-
-# If missing, add a multi-stage Dockerfile that builds the Vite app and serves with nginx.

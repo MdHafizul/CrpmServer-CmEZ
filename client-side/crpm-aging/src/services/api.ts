@@ -3,9 +3,7 @@ import type { SummaryCardApiResponse, DebtByAccountClassApiResponse, DebtByAccou
   DebtBySmerSegmentApiResponse, DetailedTableApiResponse } from '../types/dashboard.type';
 import type { UploadResponse } from '../types/upload.types';
 
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 // Function to upload debt file
 export async function uploadDebtFile(file: File): Promise<UploadResponse> {
@@ -93,13 +91,19 @@ export const getDetailedTableData = async (
   params: any,
   query: { limit?: number; sortField?: string; sortDirection?: 'ASC' | 'DESC'; cursor?: string } = {}
 ): Promise<DetailedTableApiResponse> => {
-  const url = new URL(`${API_BASE_URL}/api/v2/crpm/detailed-table/${encodeURIComponent(filename)}`);
-  if (query.limit) url.searchParams.append('limit', String(query.limit));
-  if (query.sortField) url.searchParams.append('sortField', query.sortField);
-  if (query.sortDirection) url.searchParams.append('sortDirection', query.sortDirection);
-  if (query.cursor) url.searchParams.append('cursor', query.cursor);
+  // Build path string (works when API_BASE_URL is empty or absolute)
+  const path = `${API_BASE_URL}/api/v2/crpm/detailed-table/${encodeURIComponent(filename)}`;
 
-  const response = await axios.post<DetailedTableApiResponse>(url.toString(), params);
+  // Append query params safely for relative or absolute URLs
+  const searchParams = new URLSearchParams();
+  if (query.limit) searchParams.append('limit', String(query.limit));
+  if (query.sortField) searchParams.append('sortField', query.sortField);
+  if (query.sortDirection) searchParams.append('sortDirection', query.sortDirection);
+  if (query.cursor) searchParams.append('cursor', query.cursor);
+
+  const url = searchParams.toString() ? `${path}?${searchParams.toString()}` : path;
+
+  const response = await axios.post<DetailedTableApiResponse>(url, params);
   return response.data;
 };
 
@@ -127,7 +131,7 @@ export const getDriverTreeSummary = async (filename: string) => {
 };
 
 export const getDirectedGraphSummary = async (filename: string) => {
-  const url = `${API_BASE_URL}/api/v2/crpm/directed-graph-summary/${encodeURIComponent(filename)}`;
-  const response = await axios.post(url);
-  return response.data;
-};
+   const url = `${API_BASE_URL}/api/v2/crpm/directed-graph-summary/${encodeURIComponent(filename)}`;
+   const response = await axios.post(url);
+   return response.data;
+ };
