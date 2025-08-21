@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { toPng } from 'html-to-image';
-import { getSummaryCardData, getDriverTreeSummary, getDirectedGraphSummary, getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData, getAllDataFromParquet} from '../services/api';
+import { getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData, getAllDataFromParquet } from '../services/api';
 
 // Extend the Window interface to include __fitDriverTreeView
 declare global {
@@ -84,20 +84,49 @@ async function prepareDriverTreeForCapture() {
 
 // Helper to capture the React Flow chart directly (DriverTree)
 async function captureDriverTreeReactFlow(): Promise<string | null> {
-  // Wait for fitView and scroll as before
   if (typeof window !== 'undefined' && typeof window.__fitDriverTreeView === 'function') {
+    // try to fit view if available
     window.__fitDriverTreeView();
     await new Promise(res => setTimeout(res, 700));
   }
-  // Find the full React Flow wrapper (not just renderer)
-  const rfWrapper = document.querySelector('.react-flow') as HTMLElement;
+
+  // 1) Try the .react-flow element (common when using react-flow)
+  let rfWrapper = document.querySelector('.react-flow') as HTMLElement | null;
+  if (rfWrapper && rfWrapper.parentElement) {
+    rfWrapper = rfWrapper.parentElement as HTMLElement;
+  }
+
+  // 2) Fallbacks: locate the DriverTree card/container by title or by container class pattern
+  if (!rfWrapper) {
+    // try to find an element with the exact card title text
+    const titleText = 'Driver Tree By Account Class';
+    const titleEl = Array.from(document.querySelectorAll('h1,h2,h3,h4,div,span')).find(el => el.textContent?.trim() === titleText) as HTMLElement | undefined;
+
+    let container: HTMLElement | null = null;
+    if (titleEl) {
+      // nearest ancestor that looks like the card container
+      container = titleEl.closest('div.relative') as HTMLElement | null
+        || titleEl.closest('div.rounded-lg') as HTMLElement | null
+        || titleEl.closest('div') as HTMLElement | null;
+    }
+
+    // last resort: query by classes that match the expected card container (robust contains-based lookup)
+    if (!container) {
+      container = document.querySelector('div.relative[class*="bg-gradient-to-r"][class*="from-gray-50"][class*="rounded-lg"]') as HTMLElement | null;
+    }
+
+    rfWrapper = container;
+  }
+
   if (!rfWrapper) return null;
+
+  // ensure visible and give browser time to render
   rfWrapper.scrollIntoView({ behavior: 'auto', block: 'center', inline: 'center' });
-  await new Promise(res => setTimeout(res, 200));
+  await new Promise(res => setTimeout(res, 300));
   try {
     return await toPng(rfWrapper, { quality: 1.0, cacheBust: true, pixelRatio: 2, backgroundColor: '#fff' });
   } catch (err) {
-    console.error('[excelReport] Error capturing DriverTree React Flow:', err);
+    console.error('[excelReport] Error capturing DriverTree React Flow (fallback):', err);
     return null;
   }
 }
@@ -156,18 +185,7 @@ export async function generateDashboardSummaryExcelReport(parquetFileName: strin
 
     // Fetch all dashboard data in parallel
     updateProgress('Fetching dashboard data...');
-    const [
-      summaryCardRes,
-      driverTreeRes,
-      directedGraphRes,
-      debtByStationRes,
-      accClassRes,
-      accDefRes,
-      smerSegmentRes,
-    ] = await Promise.all([
-      getSummaryCardData(parquetFileName),
-      getDriverTreeSummary(parquetFileName),
-      getDirectedGraphSummary(parquetFileName),
+    const [ debtByStationRes, accClassRes, accDefRes, smerSegmentRes, staffRes ] = await Promise.all([
       getDebtByStationData(parquetFileName, apiParams),
       getDebtByAccountClassData(parquetFileName, apiParams),
       getDebtByAdidData(parquetFileName, apiParams),
@@ -210,19 +228,27 @@ export async function generateDashboardSummaryExcelReport(parquetFileName: strin
     };
     const defaultCellStyle = { alignment: { horizontal: 'center', vertical: 'middle' } };
 
-    // Helper to add a sheet with title and headers
+    // Helper to add a sheet with title and headers (updated to handle zero columns)
     function addSheetWithHeaders(sheetName: string, title: string, columns: any[]) {
       const sheet = workbook.addWorksheet(sheetName);
       sheet.addRow([]);
       sheet.addRow([]);
       const titleRow = sheet.addRow([title]);
       titleRow.font = { bold: true, size: 16 };
-      titleRow.alignment = { horizontal: 'center' };
-      sheet.mergeCells(`A3:${String.fromCharCode(64 + columns.length)}3`);
-      sheet.addRow([]);
-      const headerRow = sheet.addRow(columns.map(col => col.header));
-      headerRow.eachCell(cell => Object.assign(cell, headerStyle));
-      columns.forEach((col, idx) => { if (col.width) sheet.getColumn(idx + 1).width = col.width; });
+      // center title horizontally
+      titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      if (columns && columns.length > 0) {
+        sheet.mergeCells(`A3:${String.fromCharCode(64 + columns.length)}3`);
+        sheet.addRow([]);
+        const headerRow = sheet.addRow(columns.map(col => col.header));
+        headerRow.eachCell(cell => Object.assign(cell, headerStyle));
+        columns.forEach((col, idx) => { if (col.width) sheet.getColumn(idx + 1).width = col.width; });
+      } else {
+        // Merge A3 through O3 (columns A..O) and ensure centered title as requested
+        sheet.mergeCells('A3:O3');
+        sheet.addRow([]);
+      }
       return sheet;
     }
     
@@ -260,84 +286,48 @@ export async function generateDashboardSummaryExcelReport(parquetFileName: strin
 
     // --- SHEET 1: Summary Card Data + Image ---
     updateProgress('Adding Summary Card data...');
-    const summarySheet = addSheetWithHeaders('Summary Card', 'Summary Card Data', [
-      { header: 'Category', key: 'category', width: 30 },
-      { header: 'Amount', key: 'amount', width: 20 },
-      { header: 'No of Accounts', key: 'numOfAcc', width: 20 }
-    ]);
-    // Insert image if captured
+    const summarySheet = addSheetWithHeaders('Summary Card', 'Summary Card Data', []);
     if (summaryCardsPng) {
       const imgId = workbook.addImage({ base64: summaryCardsPng, extension: 'png' });
+      // place image starting on Excel row 7 => zero-based index 6
       summarySheet.addImage(imgId, {
-        tl: { col: 0, row: 0 },
+        tl: { col: 0, row: 6 },
         ext: { width: 700, height: 300 }
       });
       summarySheet.addRow([]); // Add a blank row after image
     }
-    const summaryRows = [
-      { category: 'Total Trade Receivable', amount: summaryCardRes.data.TotalTradeReceivable, numOfAcc: summaryCardRes.data.TotalNoOfAccTR },
-      { category: 'Total Outstanding', amount: summaryCardRes.data.TotalOutstanding.Amount, numOfAcc: summaryCardRes.data.TotalOutstanding.NumOfAcc },
-      { category: 'Active', amount: summaryCardRes.data.Active['TTL O/S Amt'], numOfAcc: summaryCardRes.data.Active['No Of Acc'] },
-      { category: 'Inactive', amount: summaryCardRes.data.Inactive['TTL O/S Amt'], numOfAcc: summaryCardRes.data.Inactive['No Of Acc'] },
-      { category: 'Positive Balance', amount: summaryCardRes.data.TotalByBalanceType.PositiveBalance, numOfAcc: summaryCardRes.data.TotalByBalanceType.TotalNoOfAccPositiveBalance },
-      { category: 'Negative Balance', amount: summaryCardRes.data.TotalByBalanceType.NegativeBalance, numOfAcc: summaryCardRes.data.TotalByBalanceType.TotalNoOfAccNegativeBalance },
-      { category: 'Zero Balance', amount: summaryCardRes.data.TotalByBalanceType.ZeroBalance, numOfAcc: summaryCardRes.data.TotalByBalanceType.TotalNoOfAccZeroBalance },
-      { category: 'MIT', amount: summaryCardRes.data.TotalByBalanceType.MIT, numOfAcc: summaryCardRes.data.TotalByBalanceType.TotalNoOfAccMIT }
-    ];
-    addDataRows(summarySheet, [
-      { key: 'category' }, { key: 'amount' }, { key: 'numOfAcc' }
-    ], summaryRows, { 2: { numFmt: '#,##0.00' } });
+    // Per request: do not fetch/display API-driven summary card data rows.
+    // Sheet keeps headers and image only
 
     // --- SHEET 2: Driver Tree Chart as Image ---
     updateProgress('Adding Driver Tree data...');
-    const driverTreeSheet = addSheetWithHeaders('Driver Tree', 'Driver Tree Data', [
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Value', key: 'value', width: 20 },
-      { header: 'Num of Accounts', key: 'numOfAcc', width: 20 },
-      { header: 'Level', key: 'level', width: 10 }
-    ]);
+    const driverTreeSheet = addSheetWithHeaders('Driver Tree', 'Driver Tree Data', []);
     if (driverTreePng) {
       const imgId = workbook.addImage({ base64: driverTreePng, extension: 'png' });
+      // place image starting on Excel row 7 => zero-based index 6
       driverTreeSheet.addImage(imgId, {
-        tl: { col: 0, row: 0 },
+        tl: { col: 0, row: 6 },
         ext: { width: 900, height: 400 }
       });
       driverTreeSheet.addRow([]);
     }
-    function flattenTree(node: any, arr: any[] = []) {
-      arr.push({ name: node.name, value: node.value, numOfAcc: node.numOfAcc, level: node.level });
-      if (node.children) node.children.forEach((child: any) => flattenTree(child, arr));
-      return arr;
-    }
-    const driverTreeRows = flattenTree(driverTreeRes.data.root);
-    addDataRows(driverTreeSheet, [
-      { key: 'name' }, { key: 'value' }, { key: 'numOfAcc' }, { key: 'level' }
-    ], driverTreeRows, { 2: { numFmt: '#,##0.00' } });
+    // Per request: do not fetch/display API-driven driver tree rows.
+    // Sheet keeps headers and image only
 
     // --- SHEET 3: Directed Graph Chart as Image ---
     updateProgress('Adding Directed Graph data...');
-    const directedGraphSheet = addSheetWithHeaders('Directed Graph', 'Directed Graph Data', [
-      { header: 'Name', key: 'name', width: 30 },
-      { header: 'Value', key: 'value', width: 20 },
-      { header: 'Num of Accounts', key: 'numOfAcc', width: 20 }
-    ]);
+    const directedGraphSheet = addSheetWithHeaders('Directed Graph', 'Directed Graph Data', []);
     if (directedGraphPng) {
       const imgId = workbook.addImage({ base64: directedGraphPng, extension: 'png' });
+      // place image starting on Excel row 7 => zero-based index 6
       directedGraphSheet.addImage(imgId, {
-        tl: { col: 0, row: 0 },
+        tl: { col: 0, row: 6 },
         ext: { width: 900, height: 400 }
       });
       directedGraphSheet.addRow([]);
     }
-    function flattenGraph(node: any, arr: any[] = []) {
-      arr.push({ name: node.name, value: node.value, numOfAcc: node.numOfAcc });
-      if (node.children) node.children.forEach((child: any) => flattenGraph(child, arr));
-      return arr;
-    }
-    const directedGraphRows = flattenGraph(directedGraphRes.data.root);
-    addDataRows(directedGraphSheet, [
-      { key: 'name' }, { key: 'value' }, { key: 'numOfAcc' }
-    ], directedGraphRows, { 2: { numFmt: '#,##0.00' } });
+    // Per request: do not fetch/display API-driven directed graph rows.
+    // Sheet keeps headers and image only
 
     // Sheet 4: Debt By Station
     updateProgress('Adding Debt By Station data...');

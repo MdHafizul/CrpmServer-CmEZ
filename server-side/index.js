@@ -36,7 +36,6 @@ app.get('/', (req, res) => {
   res.status(200).send('Welcome to the DebtSentry API!');
 });
 
-// TODO: Change the endpoint to /api/v2/status21
 //Routes
 app.use('/api/v2/status21', status21Routes);
 app.use('/api/v2/govSorter', govSorterRoutes);
