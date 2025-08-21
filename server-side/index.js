@@ -25,6 +25,7 @@ app.use(cors({
   credentials: true,
 }));
 
+
 //Middleware to parse JSON
 app.use(express.json());
 
