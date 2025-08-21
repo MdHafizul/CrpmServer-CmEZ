@@ -222,9 +222,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [detailedTableData, setDetailedTableData] = useState<DetailedTableApiResponse | null>(null);
   const [parquetFileName, setParquetFileNameState] = useState<string | null>(() => getParquetFileNameCache());
 
-  // Debug: log when AppProvider renders
-  console.log('[AppContext] AppProvider render, parquetFileName:', parquetFileName);
-
   // State for summary card data and related properties
   const [summaryCardData, setSummaryCardData] = useState<SummaryCardApiResponse['data'] | null>(null);
   const [loading, setLoading] = useState(false);

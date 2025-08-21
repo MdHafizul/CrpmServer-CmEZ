@@ -327,7 +327,6 @@ const DriverTree: React.FC = () => {
 		const accountsShown = accountsText ? truncateToWidth(accountsText, accountsFont, innerWidth) : '';
 
 		// vertical offsets — lift text slightly for level 0; accommodate up to 3 title lines
-		const titleY = level === 0 ? y - 42 : y - 9; 
 		const lineHeight = Math.max(16, titleFontSize + 2);
 		const titleStartY = level === 0 ? y - 42 : y - 9; // root title start higher to fit 3 lines
 		const valueY = level === 0 ? y + 52 : y + 5;     

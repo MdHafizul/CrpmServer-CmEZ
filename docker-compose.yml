@@ -1,5 +1,8 @@
 services:
   backend:
+    build:
+      context: ./server-side
+      dockerfile: Dockerfile
     image: hapejoy/crpm-server:latest
     ports:
       - "3000:3000"
@@ -7,31 +10,56 @@ services:
       NODE_ENV: production
     networks:
       - app-network
-    restart: always
+    restart: unless-stopped
 
-  frontend:
-    image: hapejoy/cmez-client:latest
-    # Remove or comment out the ports section below if you only want access via Nginx
-    # ports:
-    #   - "8080:8080"
+  status21:
+    build:
+      context: ./client-side/status21-app
+      dockerfile: Dockerfile
+      args:
+        API_URL: http://backend:3000
+    image: hapejoy/status21-client:latest
+    ports:
+      - "8080:8080"
     environment:
-      PORT: 8080
-      API_URL: http://backend:3000
+      - API_URL=http://backend:3000
+      - PORT=8080
     depends_on:
       - backend
     networks:
       - app-network
-    restart: always
+    restart: unless-stopped
+
+  crpm-aging:
+    build:
+      context: ./client-side/crpm-aging
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://backend:3000
+    image: hapejoy/crpm-aging-client:latest
+    ports:
+      - "8081:80"
+    environment:
+      - VITE_API_BASE_URL=http://backend:3000
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
 
   nginx:
-    image: hapejoy/cmez-nginx:latest
+    build:
+      context: .
+      dockerfile: nginx.Dockerfile
+    image: hapejoy/reverse-proxy:latest
     ports:
       - "80:80"
     depends_on:
-      - frontend
+      - status21
+      - crpm-aging
     networks:
       - app-network
-    restart: always
+    restart: unless-stopped
 
 networks:
   app-network:
