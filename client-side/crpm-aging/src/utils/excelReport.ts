@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { toPng } from 'html-to-image';
-import { getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData, getAllDataFromParquet } from '../services/api';
+import { getDebtByStationData, getDebtByAccountClassData, getDebtByAdidData, getDebtByStaffData, getDebtBySmerSegmentData, getAllDataFromParquet, fetchAllDataPages } from '../services/api';
 
 // Extend the Window interface to include __fitDriverTreeView
 declare global {
@@ -580,6 +580,32 @@ export async function generateDashboardSummaryExcelReport(parquetFileName: strin
       (row) => row.isGrandTotal ? grandTotalRowStyle : row.isStationTotal ? stationTotalRowStyle : undefined
     );
 
+    // --- NEW Sheet: By Staff (add staff debt to summary) ---
+    updateProgress('Adding By Staff data...');
+    const staffSheet = addSheetWithHeaders('By Staff', 'Debt By Staff', [
+      { header: 'Business Area', key: 'businessArea', width: 20 },
+      { header: 'Station', key: 'station', width: 20 },
+      { header: 'Number of Accounts', key: 'numberOfAccounts', width: 20 },
+      { header: 'TTL O/S Amt', key: 'ttlOSAmt', width: 20 },
+      { header: '% of Total', key: 'percentOfTotal', width: 15 },
+      { header: 'Total Undue', key: 'totalUndue', width: 20 },
+      { header: 'Cur.Mth Unpaid', key: 'curMthUnpaid', width: 20 },
+      { header: 'Total Unpaid', key: 'totalUnpaid', width: 20 }
+    ]);
+
+    // staffRes was fetched earlier with getDebtByStaffData(...)
+    const staffData = (staffRes && staffRes.data && Array.isArray(staffRes.data.data)) ? staffRes.data.data : [];
+
+    // Add staff rows directly, format numeric columns (TTL O/S Amt -> col 4, Total Undue 6, Cur.MthUnpaid 7, Total Unpaid 8)
+    addDataRows(
+      staffSheet,
+      [
+        { key: 'businessArea' }, { key: 'station' }, { key: 'numberOfAccounts' },
+        { key: 'ttlOSAmt' }, { key: 'percentOfTotal' }, { key: 'totalUndue' }, { key: 'curMthUnpaid' }, { key: 'totalUnpaid' }
+      ],
+      staffData,
+      { 4: { numFmt: '#,##0.00' }, 6: { numFmt: '#,##0.00' }, 7: { numFmt: '#,##0.00' }, 8: { numFmt: '#,##0.00' } }
+    );
     // Save and download the main Excel report (dashboard)
     updateProgress('Saving Excel file...');
         setTimeout(() => {
@@ -606,48 +632,75 @@ export async function generateDashboardSummaryExcelReport(parquetFileName: strin
   }
 }
 
-export async function generateDashboardFullExcelReport(parquetFileName: string,) {
-  // Show loading indicator
+// Update to use paginated JSON fetch and build Excel client-side
+export async function generateDashboardFullExcelReport(parquetFileName: string, filters: any = {}) {
+  // Use server-side Excel generation (streamed) for large datasets.
   const loadingIndicator = document.createElement('div');
   loadingIndicator.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
   loadingIndicator.innerHTML = `
     <div class="bg-white p-6 rounded-lg shadow-lg text-center">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-      <p class="text-lg font-semibold">Generating Excel Report...</p>
-      <p class="text-sm text-gray-500" id="progress-text">Fetching data...</p>
+      <p class="text-lg font-semibold">Preparing full Excel export...</p>
+      <p class="text-sm text-gray-500" id="progress-text">Requesting server to prepare file...</p>
     </div>
   `;
   document.body.appendChild(loadingIndicator);
 
-  const updateProgress = (text: string) => {
-    const el = document.getElementById('progress-text');
-    if (el) el.textContent = text;
-  };
-
   try {
-    // --- Download converted parquet-to-xlsx file ---
-    updateProgress('Downloading full Excel file (converted from parquet)...');
-    try {
-      await getAllDataFromParquet(parquetFileName);
-      // Add a delay to ensure the browser download dialog appears before removing the loading indicator
-      setTimeout(() => {
-        updateProgress('Excel reports generated!');
-        setTimeout(() => {
-          document.body.removeChild(loadingIndicator);
-        }, 1000);
-      }, 1000);
-    } catch (err) {
-      updateProgress('Failed to download converted Excel file.');
-      setTimeout(() => {
-        document.body.removeChild(loadingIndicator);
-      }, 2000);
-    }
-  } catch (error: any) {
-    updateProgress('Error generating report. Please try again.');
+    const getDebtRangeObj = (range: string) => {
+      if (!range || range === 'all') return null;
+      if (typeof range === 'string' && range.endsWith('+')) {
+        const min = parseFloat(range.replace('+', ''));
+        return { min, max: null };
+      }
+      if (typeof range === 'string' && range.includes('-')) {
+        const [min, max] = range.split('-').map(Number);
+        return { min, max };
+      }
+      return null;
+    };
+
+    const apiParams = {
+      // viewType: frontend 'tradeReceivable'|'agedDebt' -> backend 'TR'|'AgedDebt'
+      viewType: filters.viewType === 'tradeReceivable' ? 'TR' : 'AgedDebt',
+      // accClassType: frontend governmentType
+      accClassType:
+        filters.governmentType === 'government'
+          ? 'GOVERNMENT'
+          : filters.governmentType === 'non-government'
+          ? 'NON_GOVERNMENT'
+          : 'ALL',
+      // mitType: frontend mitFilter
+      mitType:
+        filters.mitFilter === 'mit'
+          ? 'MIT'
+          : filters.mitFilter === 'non-mit'
+          ? 'NON_MIT'
+          : 'ALL',
+      // arrays
+      businessAreas: Array.isArray(filters.businessAreas) ? filters.businessAreas : [],
+      adids: Array.isArray(filters.accDefinitions) ? filters.accDefinitions : [],
+      // single-value filters
+      accStatus: filters.accStatus && filters.accStatus !== 'all' ? filters.accStatus : null,
+      balanceType: filters.netPositiveBalance && filters.netPositiveBalance !== 'all' ? filters.netPositiveBalance : null,
+      accountClass: filters.accClass && filters.accClass !== 'all' ? filters.accClass : null,
+      agingBucket: filters.monthsOutstandingBracket && filters.monthsOutstandingBracket !== 'all' ? filters.monthsOutstandingBracket : null,
+      totalOutstandingRange: getDebtRangeObj(filters.debtRange),
+      smerSegments: Array.isArray(filters.smerSegments) ? filters.smerSegments : []
+    };
+
+    // update progress text in the modal (if present)
+    const progressEl = document.getElementById('progress-text');
+    if (progressEl) progressEl.textContent = 'Sending filtered request to server...';
+
+    await getAllDataFromParquet(parquetFileName, apiParams);
+    // --- END NEW ---
+  } catch (err) {
+    console.error('[excelReport] Server-side Excel export failed:', err);
+    throw err;
+  } finally {
     setTimeout(() => {
-      document.body.removeChild(loadingIndicator);
-    }, 2000);
-    console.error('[excelReport] Report generation failed:', error);
-    throw error;
+      if (document.body.contains(loadingIndicator)) document.body.removeChild(loadingIndicator);
+    }, 800);
   }
 }

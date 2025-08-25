@@ -23,7 +23,8 @@ const ReportButton: React.FC = () => {
       return;
     }
     try {
-      await generateDashboardFullExcelReport(parquetFileName);
+      // Pass current filters so the exported full dataset respects the DetailedTable filters
+      await generateDashboardFullExcelReport(parquetFileName, filters);
     } catch (err) {
       alert('Failed to generate full report.');
     }

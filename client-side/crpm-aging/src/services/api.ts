@@ -3,7 +3,7 @@ import type { SummaryCardApiResponse, DebtByAccountClassApiResponse, DebtByAccou
   DebtBySmerSegmentApiResponse, DetailedTableApiResponse } from '../types/dashboard.type';
 import type { UploadResponse } from '../types/upload.types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 // Function to upload debt file
 export async function uploadDebtFile(file: File): Promise<UploadResponse> {
@@ -107,11 +107,18 @@ export const getDetailedTableData = async (
   return response.data;
 };
 
+// Download converted Parquet -> XLSX (server-side conversion)
+// Keep for backward compatibility: POST with query format=excel triggers server stream
 export const getAllDataFromParquet = async (
-  filename: string
+  filename: string,
+  filters: any = {}
 ): Promise<void> => {
-  const url = `${API_BASE_URL}/api/v2/crpm/alldata/${encodeURIComponent(filename)}`;
-  const response = await fetch(url);
+  const url = `${API_BASE_URL}/api/v2/crpm/alldata/${encodeURIComponent(filename)}?format=excel`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filters)
+  });
   if (!response.ok) throw new Error('Failed to fetch all data as Excel');
   const blob = await response.blob();
   const downloadUrl = window.URL.createObjectURL(blob);
@@ -122,6 +129,31 @@ export const getAllDataFromParquet = async (
   a.click();
   document.body.removeChild(a);
   window.URL.revokeObjectURL(downloadUrl);
+};
+
+// New: fetch all rows from parquet by repeatedly calling paginated JSON endpoint
+export const fetchAllDataPages = async (
+  filename: string,
+  filters: any = {},
+  pageSize = 1000
+): Promise<any[]> => {
+  const allItems: any[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const params = new URLSearchParams();
+    params.append('limit', String(pageSize));
+    if (cursor) params.append('cursor', String(cursor));
+    const url = `${API_BASE_URL}/api/v2/crpm/alldata/${encodeURIComponent(filename)}?${params.toString()}`;
+    const response = await axios.post(url, filters);
+    if (response.status !== 200) throw new Error('Failed to fetch page');
+    const data = response.data;
+    if (!data || !Array.isArray(data.items)) break;
+    allItems.push(...data.items);
+    if (!data.pagination || !data.pagination.hasMore) break;
+    cursor = data.pagination.nextCursor;
+    if (!cursor) break;
+  }
+  return allItems;
 };
 
 export const getDriverTreeSummary = async (filename: string) => {

@@ -37,39 +37,6 @@ exports.convertExcelToParquet = async (excelPath) => {
 };
 
 
-// Convert a parquet file to Excel and return the Excel file path.
-exports.convertParquetToExcel = async (parquetFilename) => {
-  await initializeDuckDB(dbRun);
-  // Ensure the excel extension is loaded
-  await dbRun("INSTALL 'excel';");
-  await dbRun("LOAD 'excel';");
-  const parquetPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  // Use a unique temp file for Excel export to avoid file-in-use errors
-  const timestamp = Date.now();
-  const excelPath = parquetPath.replace(/\.parquet$/i, `_${timestamp}.xlsx`);
-  const normalizedExcelPath = path.resolve(excelPath).replace(/\\/g, '/');
-  const normalizedParquetPath = path.resolve(parquetPath).replace(/\\/g, '/');
-  // Use CSV as fallback if XLSX is not supported in your DuckDB build
-  const query = `
-    COPY (SELECT * FROM read_parquet('${normalizedParquetPath}')) TO '${normalizedExcelPath}' (FORMAT 'xlsx', HEADER TRUE);
-  `;
-  try {
-    await dbRun(query);
-    return excelPath;
-  } catch (err) {
-    // Fallback: try CSV if XLSX is not supported
-    if (String(err).includes('Copy Function with name xlsx does not exist')) {
-      const csvPath = excelPath.replace(/\.xlsx$/i, '.csv');
-      const csvQuery = `
-        COPY (SELECT * FROM read_parquet('${normalizedParquetPath}')) TO '${csvPath}' (FORMAT 'csv', HEADER TRUE);
-      `;
-      await dbRun(csvQuery);
-      return csvPath;
-    }
-    throw err;
-  }
-};
-
 /*
 @TITLE : Three Function for Summary Cards
 @DESC : Function to calculate and return Total Aged Debt By Acc Status/ Trade Receivable / By Balance Type 
@@ -648,90 +615,109 @@ exports.processDetailedDebtTableDataAgedDebt = async (
 };
 
 //Function to return all data
-exports.getAllDataFromParquet = async (parquetFilename, { cursor = null, limit = null, sortField = "Contract Acc", sortDirection = "ASC" } = {}) => {
+exports.getAllDataFromParquet = async (parquetFilename, filters = {}, { cursor = null, limit = null, sortField = "Contract Acc", sortDirection = "ASC" } = {}) => {
   await initializeDuckDB(dbRun);
   const normalizedPath = path.resolve('uploads', parquetFilename).replace(/\\/g, '/');
-  let query = `
-    SELECT
-      "Customer Group",
-      "Sector",
-      "SMER Segment",
-      "Buss Area",
-      "Team",
-      "BP No",
-      "Contract Acc",
-      "Contract Account Name",
-      "ADID",
-      "Acc Class",
-      "Acc Status",
-      "Govt Code",
-      "Govt Sub Code",
-      "Payment ID",
-      "Rate Category",
-      "Indicator",
-      "MRU",
-      "Premise Type",
-      "Premise Type Description",
-      "Cash Amt",
-      "Non Cash Amt",
-      "Total Amt",
-      "GST/SST",
-      "KWTBB",
-      "ILP",
-      "Invoice",
-      "Miscellaneous",
-      "CW Rating",
-      "No of Months Outstandings",
-      "Total Undue",
-      "Cur.MthUnpaid",
-      "1 to 30",
-      "31 to 60",
-      "61 to 90",
-      "91 to 120",
-      "121 to 150",
-      "151 to 180",
-      "181 to 210",
-      "211 to 240",
-      "241 to 270",
-      "271 to 300",
-      "301 to 330",
-      "331 to 360",
-      ">361",
-      "TTL O/S Amt",
-      "Total Unpaid",
-      "DebtsExposure",
-      "Debt Exposure Unpaid",
-      "Customer Indi",
-      "Staff ID",
-      "Move Out Date",
-      "MIT Date",
-      "MIT Amt",
-      "No. of IP",
-      "Total IP Amt",
-      "Unpaid Due IP",
-      "Sub.to CollAg",
-      "Coll AgentAmt",
-      "Legal Date",
-      "Legal Amt",
-      "Last PymtDate",
-      "Last Pymt Amt",
-      "Original Business Area"
-    FROM read_parquet('${normalizedPath}')
-  `;
+  // build WHERE clause from filters (returns SQL boolean expression)
+  const whereClause = buildWhereClauses(filters) || '1=1';
 
+  // Sanitize and cap pagination params to avoid abuse
+  const MAX_PAGE_LIMIT = 10000;
+  let pageLimit = limit ? parseInt(limit) : 1000;
+  if (Number.isNaN(pageLimit) || pageLimit <= 0) pageLimit = 1000;
+  pageLimit = Math.min(pageLimit, MAX_PAGE_LIMIT);
+
+  // Whitelist of allowed sort fields to avoid SQL injection via sortField
+  const ALLOWED_SORT_FIELDS = new Set([
+    "Contract Acc", "TTL O/S Amt", "Contract Account Name", "Last PymtDate", "Last Pymt Amt",
+    "No of Months Outstandings", "Cur.MthUnpaid", "Total Unpaid"
+    // add other allowed sortable column names here if needed
+  ]);
+  const normalizedSortField = ALLOWED_SORT_FIELDS.has(sortField) ? sortField : "Contract Acc";
+
+  let query = `
+      SELECT
+        "Customer Group",
+        "Sector",
+        "SMER Segment",
+        "Buss Area",
+        "Team",
+        "BP No",
+        "Contract Acc",
+        "Contract Account Name",
+        "ADID",
+        "Acc Class",
+        "Acc Status",
+        "Govt Code",
+        "Govt Sub Code",
+        "Payment ID",
+        "Rate Category",
+        "Indicator",
+        "MRU",
+        "Premise Type",
+        "Premise Type Description",
+        "Cash Amt",
+        "Non Cash Amt",
+        "Total Amt",
+        "GST/SST",
+        "KWTBB",
+        "ILP",
+        "Invoice",
+        "Miscellaneous",
+        "CW Rating",
+        "No of Months Outstandings",
+        "Total Undue",
+        "Cur.MthUnpaid",
+        "1 to 30",
+        "31 to 60",
+        "61 to 90",
+        "91 to 120",
+        "121 to 150",
+        "151 to 180",
+        "181 to 210",
+        "211 to 240",
+        "241 to 270",
+        "271 to 300",
+        "301 to 330",
+        "331 to 360",
+        ">361",
+        "TTL O/S Amt",
+        "Total Unpaid",
+        "DebtsExposure",
+        "Debt Exposure Unpaid",
+        "Customer Indi",
+        "Staff ID",
+        "Move Out Date",
+        "MIT Date",
+        "MIT Amt",
+        "No. of IP",
+        "Total IP Amt",
+        "Unpaid Due IP",
+        "Sub.to CollAg",
+        "Coll AgentAmt",
+        "Legal Date",
+        "Legal Amt",
+        "Last PymtDate",
+        "Last Pymt Amt",
+        "Original Business Area"
+      FROM read_parquet('${normalizedPath}')
+    `;
+
+  // always include filter-based WHERE; if cursor present, append cursor condition
   if (cursor) {
     const operator = sortDirection.toUpperCase() === "ASC" ? ">" : "<";
-    query += ` WHERE "${sortField}" ${operator} '${cursor}'`;
+    query += ` WHERE ${whereClause} AND "${normalizedSortField}" ${operator} '${cursor}'`;
+  } else {
+    query += ` WHERE ${whereClause}`;
   }
 
-  query += ` ORDER BY "${sortField}" ${sortDirection.toUpperCase()} LIMIT ${parseInt(limit) + 1}`;
+  query += ` ORDER BY "${normalizedSortField}" ${String(sortDirection || 'ASC').toUpperCase()} LIMIT ${pageLimit + 1}`;
 
   const result = await dbAll(query);
 
-  const hasMore = result.length > limit;
-  const items = hasMore ? result.slice(0, limit) : result;
-
-  const nextCursor = hasMore ? items[items.length - 1][sortField] : null;
+  const hasMore = result.length > pageLimit;
+  const items = hasMore ? result.slice(0, pageLimit) : result;
+  const nextCursor = hasMore ? items[items.length - 1][normalizedSortField] : null;
 
   // Convert BigInt to Number for all values
   const convertedItems = items.map(row => {
@@ -747,7 +733,7 @@ exports.getAllDataFromParquet = async (parquetFilename, { cursor = null, limit =
     pagination: {
       hasMore,
       nextCursor,
-      limit: parseInt(limit)
+      limit: pageLimit
     }
   };
 }

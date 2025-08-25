@@ -3,6 +3,7 @@ const fs = require('fs');
 const mime = require('mime-types');
 const parquetServices = require('../services/DebtAging/parquet');
 const { convertBigIntsInObject } = require('../utils/parquetHelper');
+const ExcelJS = require('exceljs');
 
 // @DESC : Upload an Excel file, convert it to Parquet, 
 // @route GET /api/v2/parquet/process
@@ -201,29 +202,106 @@ exports.getDetailedDebtTableData = async (req, res, next) => {
   }
 };
 
-// @DESC : Get all data from a Parquet file
-// @route GET /api/v2/parquet/all-data/:filename
+// @DESC : Get all data from a Parquet file (pagination JSON or streamed Excel)
+// @route POST /api/v2/parquet/alldata/:filename
 // @access Public
 exports.getAllDataFromParquet = async (req, res) => {
   try {
     const { filename } = req.params;
-    // Call the parquet service to convert parquet to Excel and get the file path
-    const excelPath = await parquetServices.convertParquetToExcel(filename);
+    const { cursor = null, limit = 1000, sortField = "Contract Acc", sortDirection = "ASC" } = req.query;
+    const filters = req.body || {};
 
-    // Set headers for Excel download
-    res.setHeader('Content-Type', mime.lookup('xlsx') || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    // Change the download file name here:
-    res.setHeader('Content-Disposition', `attachment; filename="FULLDATA CRPM Aging - ${filename.replace(/\.parquet$/i, '.xlsx')}"`);
+    // If client requests server-side Excel conversion/download: stream using getAllDataFromParquet pages
+    if (String(req.query.format || req.query.download || '').toLowerCase() === 'excel' || req.query.download === '1') {
+      // Sanitize & prepare streaming export
+      const pageSize = Math.min(parseInt(limit) || 2000, 10000); // cap page size
+      const requestedSortField = String(sortField || 'Contract Acc');
+      const requestedSortDirection = String(sortDirection || 'ASC').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+      // Set response headers for streaming XLSX
+      res.setHeader('Content-Type', mime.lookup('xlsx') || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="FULLDATA CRPM Aging - ${filename.replace(/\.parquet$/i, '.xlsx')}"`);
 
-    // Stream the file to the response
-    const stream = fs.createReadStream(excelPath);
-    stream.pipe(res);
-    stream.on('end', () => {
-      // Optionally, delete the temp Excel file after sending
-      fs.unlink(excelPath, () => { });
-    });
-    stream.on('error', (err) => {
-      res.status(500).send('Error sending Excel file');
+      // ExcelJS streaming workbook writer — writes directly to response
+      const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res, useSharedStrings: true, useStyles: false });
+      const worksheet = workbook.addWorksheet('Full Data');
+
+      // Columns list must match parquetService SELECT order.
+      const columns = [
+        "Customer Group", "Sector", "SMER Segment", "Buss Area", "Team", "BP No", "Contract Acc",
+        "Contract Account Name", "ADID", "Acc Class", "Acc Status", "Govt Code", "Govt Sub Code",
+        "Payment ID", "Rate Category", "Indicator", "MRU", "Premise Type", "Premise Type Description",
+        "Cash Amt", "Non Cash Amt", "Total Amt", "GST/SST", "KWTBB", "ILP", "Invoice", "Miscellaneous",
+        "CW Rating", "No of Months Outstandings", "Total Undue", "Cur.MthUnpaid", "1 to 30", "31 to 60",
+        "61 to 90", "91 to 120", "121 to 150", "151 to 180", "181 to 210", "211 to 240", "241 to 270",
+        "271 to 300", "301 to 330", "331 to 360", ">361", "TTL O/S Amt", "Total Unpaid", "DebtsExposure",
+        "Debt Exposure Unpaid", "Customer Indi", "Staff ID", "Move Out Date", "MIT Date", "MIT Amt",
+        "No. of IP", "Total IP Amt", "Unpaid Due IP", "Sub.to CollAg", "Coll AgentAmt", "Legal Date",
+        "Legal Amt", "Last PymtDate", "Last Pymt Amt", "Original Business Area"
+      ];
+
+      // Write header row
+      worksheet.addRow(columns).commit();
+
+      // Page through data using service (cursor-based)
+      let pageCursor = (cursor && cursor !== 'null') ? cursor : null;
+      while (true) {
+        // Use service to fetch a page respecting filters and cursor
+        const page = await parquetServices.getAllDataFromParquet(
+          filename,
+          filters,
+          {
+            cursor: pageCursor,
+            limit: pageSize,
+            sortField: requestedSortField,
+            sortDirection: requestedSortDirection
+          }
+        );
+
+        const items = Array.isArray(page.items) ? page.items : [];
+        for (const row of items) {
+          // Map row object into ordered array corresponding to 'columns'
+          const values = columns.map(key => {
+            // keep null/undefined as empty cell; convert BigInt if any conversion missed
+            const v = row[key];
+            return v === undefined ? null : v;
+          });
+          worksheet.addRow(values).commit();
+        }
+
+        // handle pagination continuation
+        if (!page.pagination || !page.pagination.hasMore) {
+          break;
+        }
+        pageCursor = page.pagination.nextCursor;
+        if (!pageCursor) break;
+      }
+
+      // Finalize worksheet and workbook — this will end the HTTP response
+      await worksheet.commit();
+      await workbook.commit();
+      return; // response already streamed
+    }
+
+    // Otherwise return paginated JSON data using parquetServices.getAllDataFromParquet
+    const pageLimit = limit ? parseInt(limit) : 1000;
+    // IMPORTANT: forward the client-sent filters (req.body) into the parquet service
+    // so pages are returned according to the UI filters.
+    const data = await parquetServices.getAllDataFromParquet(
+      filename,
+      filters,
+      {
+        cursor,
+        limit: pageLimit,
+        sortField,
+        sortDirection
+      }
+    );
+
+    res.json({
+      success: true,
+      filename,
+      items: data.items,
+      pagination: data.pagination
     });
   } catch (error) {
     console.error('Get all data error:', error);

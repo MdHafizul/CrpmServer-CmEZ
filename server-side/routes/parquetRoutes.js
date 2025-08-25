@@ -35,8 +35,8 @@ router.post('/debt-by-staff/:filename', dataController.getAgedDebtSummaryByStaff
 router.post('/debt-by-smer-segment/:filename', dataController.getAgedDebtSummaryBySmerSegment);
 // Process debt detailed table - partial
 router.post('/detailed-table/:filename', dataController.getDetailedDebtTableData);
-// Return All data for aging file
-router.get('/alldata/:filename', dataController.getAllDataFromParquet);
+// Return All data for aging file (changed to POST to allow JSON filters & pagination)
+router.post('/alldata/:filename', dataController.getAllDataFromParquet);
 // Driver Tree summary 
 router.post('/driver-tree-summary/:filename', dataController.getDriverTreeSummary);
 // Directed Graph summary 
